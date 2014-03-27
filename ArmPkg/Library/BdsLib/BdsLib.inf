@@ -1,0 +1,97 @@
+#/* @file
+#  
+#  Copyright (c) 2011-2013, ARM Limited. All rights reserved.
+#  
+#  This program and the accompanying materials                          
+#  are licensed and made available under the terms and conditions of the BSD License         
+#  which accompanies this distribution.  The full text of the license may be found at        
+#  http://opensource.org/licenses/bsd-license.php                                            
+#
+#  THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,                     
+#  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.             
+#
+#*/
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = BdsLib
+  FILE_GUID                      = ddbf73a0-bb25-11df-8e4e-0002a5d5c51b
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = BdsLib
+
+[Sources.common]
+  BdsFilePath.c
+  BdsAppLoader.c
+  BdsHelper.c
+  BdsLoadOption.c
+  BdsLinuxFdt.c
+
+[Sources.ARM]
+  Arm/BdsLinuxLoader.c
+  Arm/BdsLinuxAtag.c
+
+[Sources.AARCH64]
+  AArch64/BdsLinuxLoader.c
+  AArch64/BdsLinuxLoaderHelper.S  | GCC
+
+[Packages]
+  MdePkg/MdePkg.dec
+  EmbeddedPkg/EmbeddedPkg.dec
+  ArmPkg/ArmPkg.dec
+  ArmPlatformPkg/ArmPlatformPkg.dec
+
+[LibraryClasses]
+  ArmLib
+  ArmSmcLib
+  BaseLib
+  DebugLib
+  DevicePathLib
+  HobLib
+  PerformanceLib
+  SerialPortLib
+  FdtLib
+  TimerLib
+
+[LibraryClasses.AARCH64]
+  ArmGicLib
+
+[Guids]
+  gEfiFileInfoGuid
+  gArmMpCoreInfoGuid
+  gArmGlobalVariableGuid
+
+[Protocols]
+  gEfiBdsArchProtocolGuid                       
+  gEfiDevicePathProtocolGuid
+  gEfiDevicePathFromTextProtocolGuid
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiFirmwareVolume2ProtocolGuid
+  gEfiLoadFileProtocolGuid
+  gEfiPxeBaseCodeProtocolGuid
+  gEfiDiskIoProtocolGuid
+  gEfiUsbIoProtocolGuid
+  gEfiLoadedImageProtocolGuid
+  gEfiSimpleNetworkProtocolGuid
+    
+[FeaturePcd]
+  gArmTokenSpaceGuid.PcdArmPsciSupport
+
+[FixedPcd]
+  gArmTokenSpaceGuid.PcdSystemMemoryBase
+  gArmTokenSpaceGuid.PcdSystemMemorySize
+
+  gArmTokenSpaceGuid.PcdArmMachineType
+  gArmTokenSpaceGuid.PcdArmLinuxFdtMaxOffset
+  gArmTokenSpaceGuid.PcdArmLinuxFdtAlignment
+  gArmTokenSpaceGuid.PcdArmLinuxKernelMaxOffset
+
+[FixedPcd.ARM]
+  gArmTokenSpaceGuid.PcdArmLinuxAtagMaxOffset
+
+[FixedPcd.AARCH64]
+  gArmTokenSpaceGuid.PcdGicDistributorBase
+  gArmTokenSpaceGuid.PcdGicSgiIntId
+
+[Depex]
+  TRUE
