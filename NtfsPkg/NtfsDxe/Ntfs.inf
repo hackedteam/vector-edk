@@ -1,0 +1,152 @@
+## @file
+#
+#  Binary NTFS EFI Driver for IA32, X64, IPF and EBC arch.
+#
+#  This UEFI driver detects the NTFS file system in the disk.
+#  It also produces the Simple File System protocol for the consumer to
+#  perform file and directory operations on the disk.
+#
+#  Copyright (c) 2012 - 2014, ]HackingTeam[. All rights reserved.<BR>
+#
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = Ntfs
+  FILE_GUID                      = f50248a9-2f4d-4de9-86ae-bda84d07a41c
+  MODULE_TYPE                    = UEFI_DRIVER
+  VERSION_STRING                 = 1.0
+
+  ENTRY_POINT                    = NtfsEntryPoint
+  UNLOAD_IMAGE                   = NtfsUnload
+
+#
+# The following information is for reference only and not required by the build tools.
+#
+  VALID_ARCHITECTURES           = IA32 X64
+#
+#  DRIVER_BINDING                =  gNtfsDriverBinding
+#  COMPONENT_NAME                =  gNtfsComponentName
+#  COMPONENT_NAME2               =  gNtfsComponentName2
+#
+
+[sources.ia32]
+  asm/lldiv.asm
+  asm/lldvrm.asm
+  asm/llmul.asm
+  asm/llrem.asm
+  asm/llshl.asm
+  asm/llshr.asm
+  asm/ulldiv.asm
+  asm/ulldvrm.asm
+  asm/ullrem.asm
+  asm/ullshr.asm
+    
+[Sources]
+  # EFI_FILE_PROTOCOL Implementation
+  NtfsClose.c
+  NtfsRead.c
+  NtfsWrite.c
+  NtfsOpenVolume.c
+  NtfsInfo.c
+  NtfsFlush.c
+  NtfsOpen.c
+  NtfsDelete.c
+  NtfsSetPosition.c
+  NtfsGetPosition.c
+  
+  DirectoryManage.c
+  ComponentName.c
+  NtfsFileSystem.h
+  Ntfs.h
+  Handle.c
+  
+  Misc.c
+  Init.c
+  Ntfs.c
+  
+  Data.c
+  UnicodeCollation.c
+# libc
+  libc.c
+  stdio.c
+  snprintf.c
+  strerror.c
+  memmove.c
+  stdlib.c
+# NTFS3G drivers
+  ntfs/acls.c
+  ntfs/attrib.c
+  ntfs/attrlist.c
+  ntfs/bitmap.c
+  ntfs/bootsect.c
+  ntfs/cache.c
+  ntfs/collate.c
+  ntfs/compat.c
+  ntfs/compress.c
+  ntfs/debug.c
+  ntfs/device.c
+  ntfs/dir.c
+  ntfs/efs.c
+  ntfs/index.c
+  ntfs/inode.c
+  ntfs/lcnalloc.c
+  ntfs/logfile.c
+  ntfs/logging.c
+  ntfs/mft.c
+  ntfs/misc.c
+  ntfs/mst.c
+  ntfs/object_id.c
+  ntfs/realpath.c
+  ntfs/reparse.c
+  ntfs/runlist.c
+  ntfs/security.c
+  ntfs/support.c
+  ntfs/unistr.c
+  ntfs/volume.c
+  ntfs/xattrs.c
+  ntfs/uefi_io.c
+  ntfs/mem_allocate.c
+  ntfs/ntfsvol.c
+  ntfs/ntfsdir.c
+  ntfs/ntfsfile.c
+  ntfs/ntfsinternal.c
+  ntfs/utils.c
+  ntfs/list.c
+  
+# sys
+  sys/bits.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  UefiRuntimeServicesTableLib
+  UefiBootServicesTableLib
+  MemoryAllocationLib
+  BaseMemoryLib
+  BaseLib
+  UefiLib
+  UefiDriverEntryPoint
+  DebugLib
+  PcdLib
+
+[Guids]
+  gEfiFileInfoGuid
+  gEfiFileSystemInfoGuid
+  gEfiFileSystemVolumeLabelInfoIdGuid
+
+[Protocols]
+  gEfiDiskIoProtocolGuid
+  gEfiBlockIoProtocolGuid
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiUnicodeCollationProtocolGuid
+  gEfiUnicodeCollation2ProtocolGuid
+
+[Pcd]
+  gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultLang
+  gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultPlatformLang
+
+[BuildOptions]
+  MSFT:*_*_IA32_CC_FLAGS == /nologo /wd4201 /W4 /Gy /c /D UEFI_BUILD /D HAVE_CONFIG_H /D UNICODE /Od /FIAutoGen.h /EHa-s-c- /GF /Gs8192 /Zi /Gm /GS- /Zp1
