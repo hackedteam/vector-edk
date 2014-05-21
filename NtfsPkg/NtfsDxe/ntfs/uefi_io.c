@@ -64,12 +64,10 @@
 #include "cache.h"
 #include "device.h"
 #include "bootsect.h"
-//#include "mem_allocate.h"
+#include "mem_allocate.h"
 
 #define DEV_FD(dev) ((struct _uefi_fd *)dev->d_private)
 
-extern void ntfs_free(void *mem);
-extern void* ntfs_alloc(size_t size);
 
 /* Prototypes */
 static s64 ntfs_device_uefi_io_readbytes(struct ntfs_device *dev, s64 offset, s64 count, void *buf);
@@ -603,12 +601,12 @@ static bool ntfs_device_uefi_io_writesectors(struct ntfs_device *dev, sec_t sect
 
 			if (DiskIo->WriteDisk(DiskIo, fd->interface->MediaId, _sectorStart, _bufferSize, buffer) != EFI_SUCCESS)
 			{
-				AsciiPrint("DiskIo %x\n\r", DiskIo);
-				AsciiPrint("MediaId %x\n\r", fd->interface->MediaId);
-				AsciiPrint("sector %x%x\n\r", (UINTN) sector * fd->sectorSize);
-				AsciiPrint("numSectors %x%x\n\r", (UINTN)  fd->sectorSize);
-				AsciiPrint("buffer %x\n\r", buffer);
-				AsciiPrint("ntfs_device_uefi_io_writesectors [DISKIO!WRITEDISK] FAILED!!!\n\r");
+				//AsciiPrint("DiskIo %x\n\r", DiskIo);
+				//AsciiPrint("MediaId %x\n\r", fd->interface->MediaId);
+				//AsciiPrint("sector %x%x\n\r", (UINTN) sector * fd->sectorSize);
+				//AsciiPrint("numSectors %x%x\n\r", (UINTN)  fd->sectorSize);
+				//AsciiPrint("buffer %x\n\r", buffer);
+				//AsciiPrint("ntfs_device_uefi_io_writesectors [DISKIO!WRITEDISK] FAILED!!!\n\r");
 				return false;
 			}
 

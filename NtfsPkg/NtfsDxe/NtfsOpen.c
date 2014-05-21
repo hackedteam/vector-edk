@@ -73,7 +73,7 @@ Returns:
 	// Perform some parameter checking
 	//
 	if (FileName == NULL || (NewHandle == NULL)) {
-		//Print("NtfsOpen: FileName is null!\n\r");
+		Print("NtfsOpen: FileName is null!\n\r");
 		return EFI_INVALID_PARAMETER;
 	}
 
@@ -88,8 +88,10 @@ Returns:
 
 	UnicodeStrToAsciiStr(FileName, TempPath);	// local name
 
-	AsciiPrint("FillFileName(%a,%a)\n", IFile->FullPath, TempPath);
-	FileNameSize = FillFileName(AsciiFileName, IFile->FullPath, TempPath);
+	//Print(L"NtfsOpen(%a, %s)\n", IFile->FullPath, FileName);
+
+	//AsciiPrint("FillFileName(%a,%a)\n", IFile->FullPath, TempPath);
+	FileNameSize = CreateFileName(AsciiFileName, IFile->FullPath, TempPath);
 
  
   //
@@ -160,13 +162,13 @@ Returns:
 		
 		CopyMem(NewIFile->FullPath, AsciiFileName, FileNameSize * sizeof(CHAR8));
 
-		if (AsciiStrCmp(TempPath, ".") == 0)
+		if (AsciiStrCmp(TempPath, ".") == 0 || AsciiStrCmp(TempPath, "..") == 0)
 		{
 			CopyMem(NewIFile->FileName, AsciiFileName, FileNameSize * sizeof(CHAR8));
 		}
 		else
 		{
-			CopyMem(NewIFile->FileName, TempPath, StrLen(TempPath) * sizeof(CHAR8));
+			CopyMem(NewIFile->FileName, TempPath, AsciiStrLen(TempPath) * sizeof(CHAR8));
 		}
 
 		NewIFile->Position = 0;
@@ -201,28 +203,4 @@ Returns:
 	
 	NtfsReleaseLock();
   	return Status;
-
-	if (inode != NULL)
-	{	// complete inode 
-		NewIFile = IFILE_FROM_FHAND(*NewHandle);
-
-		
-		NewIFile->Volume = IFile->Volume;
-		NewIFile->Position = 0;
-		NewIFile->dir_ni = IFile->inode;	// parent directory!
-
-	
-
-		Status = EFI_SUCCESS;
-		//Print(L"=> %x %s OpenSuccess\n", NewIFile, FileName);
-	}
-	else
-	{
-
-		//Print(L"=> %x %s OpenFailed", NewIFile, FileName);
-	}
-
-	NtfsReleaseLock();
-
-	return Status;
 }

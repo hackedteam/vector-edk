@@ -53,13 +53,13 @@ void ntfsCloseFile (ntfs_file_state *file);
 
 /* Gekko devoptab file routines for NTFS-based devices */
 extern int ntfs_open_r (struct _reent *r, void *fileStruct, const char *path, int flags, int mode);
-extern int ntfs_close_r (struct _reent *r, int fd);
-extern ssize_t ntfs_write_r (struct _reent *r, int fd, const char *ptr, size_t len);
-extern ssize_t ntfs_read_r (struct _reent *r, int fd, char *ptr, size_t len);
-extern off_t ntfs_seek_r (struct _reent *r, int fd, off_t pos, int dir);
-extern int ntfs_fstat_r (struct _reent *r, int fd, struct stat *st);
-extern int ntfs_ftruncate_r (struct _reent *r, int fd, off_t len);
-extern int ntfs_fsync_r (struct _reent *r, int fd);
+extern int ntfs_close_r (struct _reent *r, UINTN fd);
+extern ssize_t ntfs_write_r (struct _reent *r, UINTN fd, const char *ptr, size_t len);
+extern ssize_t ntfs_read_r (struct _reent *r, UINTN fd, char *ptr, size_t len);
+extern off_t ntfs_seek_r (struct _reent *r, UINTN fd, off_t pos, int dir);
+extern int ntfs_fstat_r (struct _reent *r, UINTN fd, struct stat *st);
+extern int ntfs_ftruncate_r (struct _reent *r, UINTN fd, off_t len);
+extern int ntfs_fsync_r (struct _reent *r, UINTN fd);
 
 #endif /* _NTFSFILE_H */
 

@@ -616,6 +616,18 @@ Ntfs_inode_to_FileHandle(
   OUT EFI_FILE **NewFileHandle);
 
 //
+EFI_STATUS
+NtfsAllocateVolume (
+  IN  EFI_HANDLE                Handle,
+  IN  EFI_DISK_IO_PROTOCOL      *DiskIo,
+  IN  EFI_BLOCK_IO_PROTOCOL     *BlockIo
+  );
+
+EFI_STATUS fsw_efi_dir_read(IN NTFS_IFILE *File,
+                            IN OUT UINTN *BufferSize,
+                            OUT EFI_FILE_INFO *FileInfo);
+
+//
 // DiskCache.c
 //
 EFI_STATUS
@@ -758,6 +770,11 @@ VOID
 		OUT EFI_TIME *EfiTime, IN UINT32 UnixTime
 	);
 
+EFI_STATUS
+NtfsAbandonVolume (
+  IN NTFS_VOLUME *Volume
+  );
+
 //
 // UnicodeCollation.c
 //
@@ -766,35 +783,6 @@ InitializeUnicodeCollationSupport (
   IN EFI_HANDLE    AgentHandle
   );
 
-VOID
-FatFatToStr (
-  IN UINTN              FatSize,
-  IN CHAR8              *Fat,
-  OUT CHAR16            *String
-  );
-
-BOOLEAN
-FatStrToFat (
-  IN  CHAR16            *String,
-  IN  UINTN             FatSize,
-  OUT CHAR8             *Fat
-  );
-
-VOID
-FatStrLwr (
-  IN CHAR16             *Str
-  );
-
-VOID
-FatStrUpr (
-  IN CHAR16             *Str
-  );
-
-INTN
-FatStriCmp (
-  IN CHAR16             *Str1,
-  IN CHAR16             *Str2
-  );
 
 //
 // Open.c
@@ -812,7 +800,7 @@ NtfsOpenVolume (
 
 
 // Handle.c
-UINTN EFIAPI FillFileName(CHAR8 *Destination, CHAR8 *Path, CHAR8 *FileName);
+UINTN EFIAPI CreateFileName(CHAR8 *Destination, CHAR8 *Path, CHAR8 *FileName);
 
 //
 // ReadWrite.c

@@ -475,7 +475,8 @@ ntfs_volume *ntfs_volume_startup(struct ntfs_device *dev,
 	NTFS_BOOT_SECTOR *bs;
 	int eo;
 
-	AsciiPrint("ntfs_volume_startup: ok...\n\r");
+	//Print(L"ntfs_volume_startup: ok...\n");
+
 	if (!dev || !dev->d_ops || !dev->d_name) {
 		errno = EINVAL;
 		ntfs_log_perror("%s: dev = %p", __FUNCTION__, dev);
@@ -514,7 +515,11 @@ ntfs_volume *ntfs_volume_startup(struct ntfs_device *dev,
 		NVolSetReadOnly(vol);
 	
 	/* ...->open needs bracketing to compile with glibc 2.7 */
+	//Print(L"Invoking dev->d_ops->open\n");
+
 	if ((dev->d_ops->open)(dev, NVolReadOnly(vol) ? O_RDONLY: O_RDWR)) {
+		//Print(L"qui non arrivera' mai.. DIO KANE!\n");
+
 		if (!NVolReadOnly(vol) && (errno == EROFS)) {
 			if ((dev->d_ops->open)(dev, O_RDONLY)) {
 				ntfs_log_perror("Error opening read-only '%s'",
@@ -546,7 +551,7 @@ ntfs_volume *ntfs_volume_startup(struct ntfs_device *dev,
 		goto error_exit;
 	}
 	if (!ntfs_boot_sector_is_ntfs(bs)) {
-		AsciiPrint("ntfs_volume_startup EINVAL (ntfs_boot_sector_is_ntfs)");
+		//AsciiPrint("ntfs_volume_startup EINVAL (ntfs_boot_sector_is_ntfs)");
 		errno = EINVAL;
 		goto error_exit;
 	}
@@ -618,19 +623,19 @@ ntfs_volume *ntfs_volume_startup(struct ntfs_device *dev,
 	/* Need to setup $MFT so we can use the library read functions. */
 	if (ntfs_mft_load(vol) < 0) {
 		ntfs_log_perror("Failed to load $MFT");
-		AsciiPrint("Failed to load $MFT");
+		//AsciiPrint("Failed to load $MFT");
 		goto error_exit;
 	}
 
 	/* Need to setup $MFTMirr so we can use the write functions, too. */
 	if (ntfs_mftmirr_load(vol) < 0) {
 		ntfs_log_perror("Failed to load $MFTMirr");
-		AsciiPrint("Failed to load $MFTMirr");
+		//AsciiPrint("Failed to load $MFTMirr");
 		goto error_exit;
 	}
 	return vol;
 error_exit:
-	AsciiPrint("ntfs_volume_startup: error exit...\n\r");
+	//AsciiPrint("ntfs_volume_startup: error exit...\n\r");
 	eo = errno;
 	free(bs);
 	if (vol)
@@ -920,7 +925,7 @@ ntfs_volume *ntfs_device_mount(struct ntfs_device *dev, ntfs_mount_flags flags)
 	unsigned int k;
 	u32 u;
 
-	AsciiPrint("ntfs_device_mount: ntfs_volume_startup\n\r");
+	//AsciiPrint("ntfs_device_mount: ntfs_volume_startup\n\r");
 
 	vol = ntfs_volume_startup(dev, flags);
 	if (!vol)
@@ -1257,7 +1262,7 @@ ntfs_volume *ntfs_device_mount(struct ntfs_device *dev, ntfs_mount_flags flags)
 io_error_exit:
 	errno = EIO;
 error_exit:
-	AsciiPrint("ntfs_device_mount: error_exit!\n\r");
+	//AsciiPrint("ntfs_device_mount: error_exit!\n\r");
 	eo = errno;
 	if (ctx)
 		ntfs_attr_put_search_ctx(ctx);

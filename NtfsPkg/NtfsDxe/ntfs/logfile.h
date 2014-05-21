@@ -61,6 +61,7 @@
  *
  * Begins the restart area.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*Ofs*/
 /*  0	NTFS_RECORD; -- Unfolded here as gcc doesn't like unnamed structs. */
@@ -95,6 +96,7 @@ typedef struct {
 				   version 1.1. */
 /* sizeof() = 30 (0x1e) bytes */
 } RESTART_PAGE_HEADER;
+#pragma pack(pop)
 
 /*
  * Constant for the log client indices meaning that there are no client records
@@ -122,6 +124,7 @@ typedef le16 RESTART_AREA_FLAGS;
  * RESTART_PAGE_HEADER to the restart_area_offset value found in it.
  * See notes at restart_area_offset above.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*Ofs*/
 /*  0*/	leLSN current_lsn;	/* The current, i.e. last LSN inside the log
@@ -255,6 +258,7 @@ typedef struct {
 /* 44*/	le32 reserved;		/* Reserved/alignment to 8-byte boundary. */
 /* sizeof() = 48 (0x30) bytes */
 }   RESTART_AREA;
+#pragma pack(pop)
 
 /**
  * struct LOG_CLIENT_RECORD - Log client record.
@@ -262,6 +266,7 @@ typedef struct {
  * The offset of this record is found by adding the offset of the
  * RESTART_AREA to the client_array_offset value found in it.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*Ofs*/
 /*  0*/	leLSN oldest_lsn;	/* Oldest LSN needed by this client.  On create
@@ -296,6 +301,7 @@ typedef struct {
 				   set to 0. */
 /* sizeof() = 160 (0xa0) bytes */
 }   LOG_CLIENT_RECORD;
+#pragma pack(pop)
 
 /**
  * struct RECORD_PAGE_HEADER - Log page record page header.
@@ -305,6 +311,7 @@ typedef struct {
  * following update sequence array and then aligned to 8 byte boundary, but is
  * this specified anywhere?).
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0	NTFS_RECORD; -- Unfolded here as gcc doesn't like unnamed structs. */
 	NTFS_RECORD_TYPES magic;/* Usually the magic is "RCRD". */
@@ -329,7 +336,7 @@ typedef struct {
 		}   packed;
 	}   header;
 }   RECORD_PAGE_HEADER;
-
+#pragma pack(pop)
 /**
  * enum LOG_RECORD_FLAGS - Possible 16-bit flags for log records.
  *
@@ -345,16 +352,19 @@ typedef enum {
 /**
  * struct LOG_CLIENT_ID - The log client id structure identifying a log client.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u16 seq_number;
 	u16 client_index;
 }   LOG_CLIENT_ID;
+#pragma pack(pop)
 
 /**
  * struct LOG_RECORD - Log record header.
  *
  * Each log record seems to have a constant size of 0x70 bytes.
  */
+#pragma pack(push, 1)
 typedef struct {
 	LSN this_lsn;
 	LSN client_previous_lsn;
@@ -386,6 +396,7 @@ typedef struct {
 		LCN lcn;
 	}   lcn_list[0];
 }   LOG_RECORD;
+#pragma pack(pop)
 
 extern BOOL ntfs_check_logfile(ntfs_attr *log_na, RESTART_PAGE_HEADER **rp);
 extern BOOL ntfs_is_logfile_clean(ntfs_attr *log_na, RESTART_PAGE_HEADER *rp);

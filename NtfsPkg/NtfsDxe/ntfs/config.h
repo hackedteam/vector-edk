@@ -403,6 +403,11 @@ extern int errno;
 #define bool	char
 #define true	1
 #define false	0
+#elif (_MSC_VER == 1600)
+	// visual studio 2010!
+#define bool	char
+#define true	1
+#define false	0
 #elif
 #error "Error! C bool/true/false to define?"
 #endif

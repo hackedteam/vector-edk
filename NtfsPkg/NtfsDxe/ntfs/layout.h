@@ -46,7 +46,7 @@
 /**
  * struct BIOS_PARAMETER_BLOCK - BIOS parameter block (bpb) structure.
  */
-__declspec(align(1))
+#pragma pack(push, 1)
 typedef struct {
 	u16 bytes_per_sector;		/* Size of a sector in bytes. */
 	u8  sectors_per_cluster;	/* Size of a cluster in sectors. */
@@ -64,11 +64,13 @@ typedef struct {
 /*0x15*/u32 large_sectors;		/* zero */
 /* sizeof() = 25 (0x19) bytes */
 } /**/ BIOS_PARAMETER_BLOCK;
+#pragma pack(pop)
 
 /**
  * struct NTFS_BOOT_SECTOR - NTFS boot sector structure.
  */
-__declspec(align(1))
+
+#pragma pack(push, 1)
 typedef struct {
 	u8  jump[3];			/* Irrelevant (jump to boot up code).*/
 	u64 oem_id;			/* Magic "NTFS    ". */
@@ -95,6 +97,7 @@ typedef struct {
 					   0xaa55 in little endian. */
 /* sizeof() = 512 (0x200) bytes */
 } /**/ NTFS_BOOT_SECTOR;
+#pragma pack(pop)
 
 /**
  * enum NTFS_RECORD_TYPES -
@@ -889,7 +892,7 @@ typedef ATTR_RECORD ATTR_REC;
 	 */
 #define	FILE_ATTR_VIEW_INDEX_PRESENT	const_cpu_to_le32(0x20000000)
 //} /**/ //FILE_ATTR_FLAGS;
-#define FILE_ATTR_FLAGS unsigned int
+#define FILE_ATTR_FLAGS unsigned __int32
 
 
 /*
@@ -909,6 +912,7 @@ typedef ATTR_RECORD ATTR_REC;
  *	 correct by practical experimentation on Windows NT4 SP6a and is hence
  *	 assumed to be the one and only correct interpretation.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*Ofs*/
 /*  0*/	s64 creation_time;		/* Time file was created. Updated when
@@ -990,6 +994,7 @@ typedef struct {
 	};
 /* sizeof() = 72 bytes (NTFS 3.0) */
 } STANDARD_INFORMATION;
+#pragma pack(pop)
 
 /**
  * struct ATTR_LIST_ENTRY - Attribute: Attribute list (0x20).
@@ -1020,6 +1025,7 @@ typedef struct {
  *	  NTFS 3.0 volumes).
  *	- There are many named streams.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*Ofs*/
 /*  0*/	ATTR_TYPES type;	/* Type of referenced attribute. */
@@ -1051,6 +1057,7 @@ typedef struct {
 				   name. */
 /* sizeof() = 26 + (attribute_name_length * 2) bytes */
 } /**/ ATTR_LIST_ENTRY;
+#pragma pack(pop)
 
 /*
  * The maximum allowed length for a file name.
@@ -1098,7 +1105,7 @@ typedef struct {
  *	 correct by practical experimentation on Windows NT4 SP6a and is hence
  *	 assumed to be the one and only correct interpretation.
  */
-__declspec(align(1))
+#pragma pack(push, 1)
 typedef struct {
 /*hex ofs*/
 /*  0*/	MFT_REF parent_directory;	/* Directory this filename is
@@ -1139,6 +1146,7 @@ typedef struct {
 /* 41*/	FILE_NAME_TYPE_FLAGS file_name_type;	/* Namespace of the file name.*/
 /* 42*/	ntfschar file_name[0];			/* File name in Unicode. */
 } /**/ FILE_NAME_ATTR;
+#pragma pack(pop)
 
 /**
  * struct GUID - GUID structures store globally unique identifiers (GUID).
@@ -1178,6 +1186,7 @@ typedef struct {
  *			  equals the object_id. Optional (i.e. can be zero).
  *	domain_id	- Reserved (always zero).
  */
+#pragma pack(push, 1)
 typedef struct {
 	MFT_REF mft_reference;	/* Mft record containing the object_id in
 				   the index entry key. */
@@ -1190,12 +1199,14 @@ typedef struct {
 		u8 extended_info[48];
 	} /**/;
 } /**/ OBJ_ID_INDEX_DATA;
+#pragma pack(pop)
 
 /**
  * struct OBJECT_ID_ATTR - Attribute: Object id (NTFS 3.0+) (0x40).
  *
  * NOTE: Always resident.
  */
+#pragma pack(push, 1)
 typedef struct {
 	GUID object_id;				/* Unique id assigned to the
 						   file.*/
@@ -1217,6 +1228,7 @@ typedef struct {
 		u8 extended_info[48];
 	} ;
 }  OBJECT_ID_ATTR;
+#pragma pack(pop)
 
 #if 0
 /**
@@ -1359,6 +1371,7 @@ typedef enum {					/* Identifier authority. */
  *
  * NOTE: This is stored as a big endian number.
  */
+#pragma pack(push, 1)
 typedef union {
 	struct {
 		u16 high_part;		/* High 16-bits. */
@@ -1366,6 +1379,7 @@ typedef union {
 	} ;
 	u8 value[6];			/* Value as individual bytes. */
 }  SID_IDENTIFIER_AUTHORITY;
+#pragma pack(pop)
 
 /**
  * struct SID -
@@ -1395,22 +1409,26 @@ typedef union {
  *	sub_authority[0] = 32,			// SECURITY_BUILTIN_DOMAIN_RID
  *	sub_authority[1] = 544			// DOMAIN_ALIAS_RID_ADMINS
  */
+#pragma pack(push, 1)
 typedef struct {
 	u8 revision;
 	u8 sub_authority_count;
 	SID_IDENTIFIER_AUTHORITY identifier_authority;
 	u32 sub_authority[1];		/* At least one sub_authority. */
 }  SID;
+#pragma pack(pop)
 
 /**
  * enum SID_CONSTANTS - Current constants for SIDs.
  */
+#pragma pack(push, 1)
 typedef enum {
 	SID_REVISION			=  1,	/* Current revision level. */
 	SID_MAX_SUB_AUTHORITIES		= 15,	/* Maximum number of those. */
 	SID_RECOMMENDED_SUB_AUTHORITIES	=  1,	/* Will change to around 6 in
 						   a future revision. */
 } SID_CONSTANTS;
+#pragma pack(pop)
 
 /**
  * enum ACE_TYPES - The predefined ACE types (8-bit, see below).
@@ -1480,11 +1498,13 @@ typedef enum {
  * which specifies the type and size of the ACE. The format of the subsequent
  * data depends on the ACE type.
  */
+#pragma pack(push, 1)
 typedef struct {
 	ACE_TYPES type;		/* Type of the ACE. */
 	ACE_FLAGS flags;	/* Flags describing the ACE. */
 	u16 size;		/* Size in bytes of the ACE. */
 }  ACE_HEADER;
+#pragma pack(pop)
 
 /**
  * enum ACCESS_MASK - The access mask (32-bit).
@@ -1626,7 +1646,7 @@ typedef struct {
 	//GENERIC_READ			= const_cpu_to_le32(0x80000000),
 #define GENERIC_READ	0x80000000
 //} ACCESS_MASK;
-#define ACCESS_MASK	unsigned int
+#define ACCESS_MASK	unsigned __int32
 
 /**
  * struct GENERIC_MAPPING -
@@ -1636,12 +1656,14 @@ typedef struct {
  *
  * FIXME: What exactly is this and what is it for? (AIA)
  */
+#pragma pack(push, 1)
 typedef struct {
 	ACCESS_MASK generic_read;
 	ACCESS_MASK generic_write;
 	ACCESS_MASK generic_execute;
 	ACCESS_MASK generic_all;
 }  GENERIC_MAPPING;
+#pragma pack(pop)
 
 /*
  * The predefined ACE type structures are as defined below.
@@ -1652,6 +1674,7 @@ typedef struct {
  *
  * ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE, SYSTEM_AUDIT_ACE, SYSTEM_ALARM_ACE
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0	ACE_HEADER; -- Unfolded here as gcc doesn't like unnamed structs. */
 	ACE_TYPES type;		/* Type of the ACE. */
@@ -1662,6 +1685,7 @@ typedef struct {
 /*  8*/	SID sid;		/* The SID associated with the ACE. */
 }  ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE,
 			       SYSTEM_AUDIT_ACE, SYSTEM_ALARM_ACE;
+#pragma pack(pop)
 
 /**
  * enum OBJECT_ACE_FLAGS - The object ACE flags (32-bit).
@@ -1674,6 +1698,7 @@ typedef enum {
 /**
  * struct ACCESS_ALLOWED_OBJECT_ACE -
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0	ACE_HEADER; -- Unfolded here as gcc doesn't like unnamed structs. */
 	ACE_TYPES type;		/* Type of the ACE. */
@@ -1689,6 +1714,7 @@ typedef struct {
 			       ACCESS_DENIED_OBJECT_ACE,
 			       SYSTEM_AUDIT_OBJECT_ACE,
 			       SYSTEM_ALARM_OBJECT_ACE;
+#pragma pack(pop)
 
 /**
  * struct ACL - An ACL is an access-control list (ACL).
@@ -1698,6 +1724,7 @@ typedef struct {
  * zero or more access control entries (ACEs). The ACL as well as each ACE
  * are aligned on 4-byte boundaries.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u8 revision;	/* Revision of this ACL. */
 	u8 alignment1;
@@ -1707,6 +1734,7 @@ typedef struct {
 	u16 alignment2;
 /* sizeof() = 8 bytes */
 }  ACL;
+#pragma pack(pop)
 
 /**
  * enum ACL_CONSTANTS - Current constants for ACLs.
@@ -1797,6 +1825,7 @@ typedef enum {
  * Self-relative security descriptor. Contains the owner and group SIDs as well
  * as the sacl and dacl ACLs inside the security descriptor itself.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u8 revision;	/* Revision level of the security descriptor. */
 	u8 alignment;
@@ -1818,6 +1847,7 @@ typedef struct {
 			   (unconditionally granting access) is specified. */
 /* sizeof() = 0x14 bytes */
 }  SECURITY_DESCRIPTOR_RELATIVE;
+#pragma pack(pop)
 
 /**
  * struct SECURITY_DESCRIPTOR - Absolute security descriptor.
@@ -1829,6 +1859,7 @@ typedef struct {
  *
  * On disk, a self-relative security descriptor is used.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u8 revision;	/* Revision level of the security descriptor. */
 	u8 alignment;
@@ -1849,6 +1880,7 @@ typedef struct {
 			   SE_DACL_PRESENT is set but dacl is NULL, a NULL ACL
 			   (unconditionally granting access) is specified. */
 }  SECURITY_DESCRIPTOR;
+#pragma pack(pop)
 
 /**
  * enum SECURITY_DESCRIPTOR_CONSTANTS -
@@ -1922,16 +1954,19 @@ typedef SECURITY_DESCRIPTOR_RELATIVE SECURITY_DESCRIPTOR_ATTR;
  * This header precedes each security descriptor in the $SDS data stream.
  * This is also the index entry data part of both the $SII and $SDH indexes.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 hash;	   /* Hash of the security descriptor. */
 	u32 security_id;   /* The security_id assigned to the descriptor. */
 	u64 offset;	   /* Byte offset of this entry in the $SDS stream. */
 	u32 length;	   /* Size in bytes of this entry in $SDS stream. */
 }  SECURITY_DESCRIPTOR_HEADER;
+#pragma pack(pop)
 
 /**
  * struct SDH_INDEX_DATA -
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 hash;          /* Hash of the security descriptor. */
 	u32 security_id;   /* The security_id assigned to the descriptor. */
@@ -1940,6 +1975,7 @@ typedef struct {
 	u32 reserved_II;   /* Padding - always unicode "II" or zero. This field
 			      isn't counted in INDEX_ENTRY's data_length. */
 }  SDH_INDEX_DATA;
+#pragma pack(pop)
 
 /**
  * struct SII_INDEX_DATA -
@@ -1959,6 +1995,7 @@ typedef SECURITY_DESCRIPTOR_HEADER SII_INDEX_DATA;
  * the first copy of the security descriptor will be at offset 0x51d0 in the
  * $SDS data stream and the second copy will be at offset 0x451d0.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0	SECURITY_DESCRIPTOR_HEADER; -- Unfolded here as gcc doesn't like
 				       unnamed structs. */
@@ -1969,15 +2006,18 @@ typedef struct {
 /* 20*/	SECURITY_DESCRIPTOR_RELATIVE sid; /* The self-relative security
 					     descriptor. */
 } SDS_ENTRY;
+#pragma pack(pop)
 
 /**
  * struct SII_INDEX_KEY - The index entry key used in the $SII index.
  *
  * The collation type is COLLATION_NTOFS_ULONG.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 security_id;   /* The security_id assigned to the descriptor. */
 }  SII_INDEX_KEY;
+#pragma pack(pop)
 
 /**
  * struct SDH_INDEX_KEY - The index entry key used in the $SDH index.
@@ -1985,10 +2025,12 @@ typedef struct {
  * The keys are sorted first by hash and then by security_id.
  * The collation rule is COLLATION_NTOFS_SECURITY_HASH.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 hash;	   /* Hash of the security descriptor. */
 	u32 security_id;   /* The security_id assigned to the descriptor. */
 }  SDH_INDEX_KEY;
+#pragma pack(pop)
 
 /**
  * struct VOLUME_NAME - Attribute: Volume name (0x60).
@@ -1996,9 +2038,11 @@ typedef struct {
  * NOTE: Always resident.
  * NOTE: Present only in FILE_Volume.
  */
+#pragma pack(push, 1)
 typedef struct {
 	ntfschar name[0];	/* The name of the volume in Unicode. */
 }  VOLUME_NAME;
+#pragma pack(pop)
 
 /**
  * enum VOLUME_FLAGS - Possible flags for the volume (16-bit).
@@ -2025,12 +2069,14 @@ typedef struct {
  * NOTE: Windows 2000 uses NTFS 3.0 while Windows NT4 service pack 6a uses
  *	 NTFS 1.2. I haven't personally seen other values yet.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u64 reserved;		/* Not used (yet?). */
 	u8 major_ver;		/* Major version of the ntfs format. */
 	u8 minor_ver;		/* Minor version of the ntfs format. */
 	VOLUME_FLAGS flags;	/* Bit array of VOLUME_* flags. */
 }  VOLUME_INFORMATION;
+#pragma pack(pop)
 
 /**
  * struct DATA_ATTR - Attribute: Data attribute (0x80).
@@ -2039,9 +2085,11 @@ typedef struct {
  *
  * Data contents of a file (i.e. the unnamed stream) or of a named stream.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u8 data[0];		/* The file's data contents. */
 }  DATA_ATTR;
+#pragma pack(pop)
 
 /**
  * enum INDEX_HEADER_FLAGS - Index header flags (8-bit).
@@ -2077,6 +2125,7 @@ typedef struct {
  * relative to the start of the index header structure and not relative to the
  * start of the index root or index allocation structures themselves.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0*/	u32 entries_offset;	/* Byte offset from the INDEX_HEADER to first
 				   INDEX_ENTRY, aligned to 8-byte boundary.  */
@@ -2097,6 +2146,7 @@ typedef struct {
 /* 13*/	u8 reserved[3];			/* Reserved/align to 8-byte boundary.*/
 /* sizeof() == 16 */
 }  INDEX_HEADER;
+#pragma pack(pop)
 
 /**
  * struct INDEX_ROOT - Attribute: Index root (0x90).
@@ -2117,6 +2167,7 @@ typedef struct {
  * NOTE: The root directory (FILE_root) contains an entry for itself. Other
  * directories do not contain entries for themselves, though.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0*/	ATTR_TYPES type;		/* Type of the indexed attribute. Is
 					   $FILE_NAME for directories, zero
@@ -2136,6 +2187,7 @@ typedef struct {
 					   following index entries. */
 /* sizeof()= 32 bytes */
 }  INDEX_ROOT;
+#pragma pack(pop)
 
 /**
  * struct INDEX_BLOCK - Attribute: Index allocation (0xa0).
@@ -2146,6 +2198,7 @@ typedef struct {
  * INDEX_BLOCK structure containing an index header, followed by a sequence of
  * index entries (INDEX_ENTRY structures), as described by the INDEX_HEADER.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0	NTFS_RECORD; -- Unfolded here as gcc doesn't like unnamed structs. */
 	NTFS_RECORD_TYPES magic;/* Magic is "INDX". */
@@ -2167,6 +2220,7 @@ typedef struct {
  * When reading use the data from the ntfs record header.
  */
 }  INDEX_BLOCK;
+#pragma pack(pop)
 
 typedef INDEX_BLOCK INDEX_ALLOCATION;
 
@@ -2181,12 +2235,13 @@ typedef INDEX_BLOCK INDEX_ALLOCATION;
  * COLLATION_NTOFS_ULONGS. FIXME: Verify whether the reparse_tag is not the
  * primary key / is not a key at all. (AIA)
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 reparse_tag;	/* Reparse point type (inc. flags). */
 	MFT_REF file_id;	/* Mft record of the file containing the
 				   reparse point attribute. */
 }  REPARSE_INDEX_KEY;
-
+#pragma pack(pop)
 /**
  * enum QUOTA_FLAGS - Quota flags (32-bit).
  */
@@ -2234,6 +2289,7 @@ typedef enum {
  *
  * The $Q index entry data is the quota control entry and is defined below.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 version;		/* Currently equals 2. */
 	QUOTA_FLAGS flags;	/* Flags describing this quota entry. */
@@ -2252,16 +2308,19 @@ typedef struct {
 				   a multiple of 8 and the padding is counted in
 				   the INDEX_ENTRY's data_length. */
 }  QUOTA_CONTROL_ENTRY;
+#pragma pack(pop)
 
 /**
  * struct QUOTA_O_INDEX_DATA -
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 owner_id;
 	u32 unknown;		/* Always 32. Seems to be padding and it's not
 				   counted in the INDEX_ENTRY's data_length.
 				   This field shouldn't be really here. */
 }  QUOTA_O_INDEX_DATA;
+#pragma pack(pop)
 
 /**
  * enum PREDEFINED_OWNER_IDS - Predefined owner_id values (32-bit).
@@ -2294,6 +2353,7 @@ typedef enum {
  *         !!!!!  SEE DESCRIPTION OF THE FIELDS AT INDEX_ENTRY  !!!!!
  *         ==========================================================
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0*/	union {
 		MFT_REF indexed_file;
@@ -2309,6 +2369,7 @@ typedef struct {
 /* 14*/	u16 reserved;
 /* sizeof() = 16 bytes */
 }  INDEX_ENTRY_HEADER;
+#pragma pack(pop)
 
 /**
  * struct INDEX_ENTRY - This is an index entry.
@@ -2319,6 +2380,7 @@ typedef struct {
  *
  * NOTE: Before NTFS 3.0 only filename attributes were indexed.
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0	INDEX_ENTRY_HEADER; -- Unfolded here as gcc dislikes unnamed structs. */
 	union {		/* Only valid when INDEX_ENTRY_END is not set. */
@@ -2376,6 +2438,7 @@ typedef struct {
 			   (char*)ie + le16_to_cpu(ie->length) - sizeof(VCN)
 	*/
 }  INDEX_ENTRY;
+#pragma pack(pop)
 
 /**
  * struct BITMAP_ATTR - Attribute: Bitmap (0xb0).
@@ -2387,9 +2450,11 @@ typedef struct {
  * the number of bits in the bitmap * index block size / cluster size is the
  * number of clusters in the index allocation attribute.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u8 bitmap[0];			/* Array of bits. */
 }  BITMAP_ATTR;
+#pragma pack(pop)
 
 /**
  * enum PREDEFINED_REPARSE_TAGS -
@@ -2440,18 +2505,21 @@ typedef enum {
  *
  * NOTE: Can be resident or non-resident.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 reparse_tag;		/* Reparse point type (inc. flags). */
 	u16 reparse_data_length;	/* Byte size of reparse data. */
 	u16 reserved;			/* Align to 8-byte boundary. */
 	u8 reparse_data[0];		/* Meaning depends on reparse_tag. */
 }  REPARSE_POINT;
+#pragma pack(pop)
 
 /**
  * struct EA_INFORMATION - Attribute: Extended attribute information (0xd0).
  *
  * NOTE: Always resident.
  */
+#pragma pack(push, 1)
 typedef struct {
 	u16 ea_length;		/* Byte size of the packed extended
 				   attributes. */
@@ -2463,6 +2531,7 @@ typedef struct {
 				   byte size of the unpacked extended
 				   attributes. */
 }  EA_INFORMATION;
+#pragma pack(pop)
 
 /**
  * enum EA_FLAGS - Extended attribute flags (8-bit).
@@ -2483,6 +2552,7 @@ typedef enum {
  * FIXME: It appears weird that the EA name is not Unicode. Is it true?
  * FIXME: It seems that name is always uppercased. Is it true?
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 next_entry_offset;	/* Offset to the next EA_ATTR. */
 	EA_FLAGS flags;		/* Flags describing the EA. */
@@ -2493,6 +2563,7 @@ typedef struct {
 	//u8 value[0];		/* The value of the EA. Immediately
 				   //follows the name. */
 }  EA_ATTR;
+#pragma pack(pop)
 
 /**
  * struct PROPERTY_SET - Attribute: Property set (0xf0).
@@ -2500,10 +2571,12 @@ typedef struct {
  * Intended to support Native Structure Storage (NSS) - a feature removed from
  * NTFS 3.0 during beta testing.
  */
+#pragma pack(push, 1)
 typedef struct {
 	void *ignore;
 	/* Irrelevant as feature unused. */
 }  PROPERTY_SET;
+#pragma pack(pop)
 
 /**
  * struct LOGGED_UTILITY_STREAM - Attribute: Logged utility stream (0x100).
@@ -2553,6 +2626,7 @@ typedef struct {
  *
  * The header of the Logged utility stream (0x100) attribute named "$EFS".
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0*/	u32 length;		/* Length of EFS attribute in bytes. */
 	u32 state;		/* Always 0? */
@@ -2573,18 +2647,22 @@ typedef struct {
 				   no DRFs are present. */
 	u32 reserved;		/* Reserved. */
 }  EFS_ATTR_HEADER;
+#pragma pack(pop)
 
 /**
  * struct EFS_DF_ARRAY_HEADER -
  */
+#pragma pack(push, 1)
 typedef struct {
 	u32 df_count;		/* Number of data decryption/recovery fields in
 				   the array. */
 }  EFS_DF_ARRAY_HEADER;
+#pragma pack(pop)
 
 /**
  * struct EFS_DF_HEADER -
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0*/	u32 df_length;		/* Length of this data decryption/recovery
 				   field in bytes. */
@@ -2595,10 +2673,12 @@ typedef struct {
 				   the data decryption/recovery field. */
 /* 16*/	u32 unknown1;		/* always 0?  Might be just padding. */
 }  EFS_DF_HEADER;
+#pragma pack(pop)
 
 /**
  * struct EFS_DF_CREDENTIAL_HEADER -
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0*/	u32 cred_length;	/* Length of this credential in bytes. */
 	u32 sid_offset;		/* Offset in bytes to the user's sid from start
@@ -2637,12 +2717,14 @@ typedef struct {
 		} ;
 	} ;
 }  EFS_DF_CREDENTIAL_HEADER;
+#pragma pack(pop)
 
 typedef EFS_DF_CREDENTIAL_HEADER EFS_DF_CRED_HEADER;
 
 /**
  * struct EFS_DF_CERTIFICATE_THUMBPRINT_HEADER -
  */
+#pragma pack(push, 1)
 typedef struct {
 /*  0*/	u32 thumbprint_offset;		/* Offset in bytes to the thumbprint. */
 	u32 thumbprint_size;		/* Size of thumbprint in bytes. */
@@ -2658,6 +2740,7 @@ typedef struct {
 					   no user name present.  (This is also
 					   known as lpDisplayInformation.) */
 }  EFS_DF_CERTIFICATE_THUMBPRINT_HEADER;
+#pragma pack(pop)
 
 typedef EFS_DF_CERTIFICATE_THUMBPRINT_HEADER EFS_DF_CERT_THUMBPRINT_HEADER;
 
@@ -2670,6 +2753,7 @@ typedef enum {
 		const_cpu_to_le64(0x004B4C4278746E49ULL), /* "IntxBLK\0" */
 } INTX_FILE_TYPES;
 
+#pragma pack(push, 1)
 typedef struct {
 	INTX_FILE_TYPES magic;		/* Intx file magic. */
 	union {
@@ -2683,5 +2767,6 @@ typedef struct {
 		ntfschar target[0];
 	} ;
 }  INTX_FILE;
+#pragma pack(pop)
 
 #endif /* defined _NTFS_LAYOUT_H */

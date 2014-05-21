@@ -17,8 +17,14 @@ Abstract:
 --*/
 
 #include "Ntfs.h"
+#include "ntfs/ntfsinternal.h"
 #include "ntfs/logging.h"
 #include "ntfs/layout.h"
+
+EFI_STATUS
+NtfsOpenDevice (
+  IN OUT NTFS_VOLUME           *Volume
+  );
 
 void DiagnosticSizeOf()
 {
@@ -26,6 +32,32 @@ void DiagnosticSizeOf()
 
 	attr_record = AllocateZeroPool(sizeof(ATTR_RECORD));
 
+}
+
+VOID NtfsCreateVolumeName(CHAR8 *RootFileString, UINTN Address)
+{
+	CHAR8 *szHex = "0123456789abcdef";
+
+	RootFileString[4] = szHex[Address % 0x10];
+	Address = Address >> 4;
+
+	RootFileString[5] = szHex[Address % 0x10];
+	Address = Address >> 4;
+
+	RootFileString[6] = szHex[Address % 0x10];
+	Address = Address >> 4;
+
+	RootFileString[7] = szHex[Address % 0x10];
+	Address = Address >> 4;
+
+	RootFileString[9] = szHex[Address % 0x10];
+	Address = Address >> 4;
+
+	RootFileString[9] = szHex[Address % 0x10];
+	Address = Address >> 4;
+
+	RootFileString[10] = szHex[Address % 0x10];
+	Address = Address >> 4;
 }
 
 EFI_STATUS
@@ -59,6 +91,8 @@ Returns:
   NTFS_VOLUME  *Volume;
   UINT32 MediaId;
 
+  //Print(L"NtfsAllocateVolume\n");
+
   ntfsInit();
   //
   // Allocate a volume structure
@@ -69,7 +103,7 @@ Returns:
   }
 
 
- // CpuBreakpoint();
+  //CpuBreakpoint();
 
   //
   // Initialize the structure
@@ -101,16 +135,13 @@ Returns:
 
   MediaId = BlockIo->Media->MediaId;
 
-  Volume->RootFileString[0] = 'v';
-  Volume->RootFileString[1] = 'o';
-  Volume->RootFileString[2] = 'l';
-  Volume->RootFileString[3] = ((MediaId % 100) / 10) + '0'; 
-  Volume->RootFileString[4] = MediaId % 10 + '0';
-  Volume->RootFileString[5] = (BlockIo->Media->LowestAlignedLba % 10000) / 1000 + '0';
-  Volume->RootFileString[6] = (BlockIo->Media->LowestAlignedLba % 1000) / 100 + '0';
-  Volume->RootFileString[7] = (BlockIo->Media->LowestAlignedLba % 100) / 10 + '0';
-  Volume->RootFileString[8] = (BlockIo->Media->LowestAlignedLba % 10) + '0';
+  Volume->RootFileString[0] = 'n';
+  Volume->RootFileString[1] = 't';
+  Volume->RootFileString[2] = 'f';
+  Volume->RootFileString[3] = 's';
 
+  NtfsCreateVolumeName(Volume->RootFileString, (UINTN) BlockIo);
+  
   Volume->vd = ntfsMount(Volume->RootFileString, Volume, 0, 0, 0, 0, 0);	// 
   Volume->vol = Volume->vd->vol;
 
@@ -119,8 +150,10 @@ Returns:
 	  //Print(L"Allocation of 'volume' failed.\n\r");
 	  goto Done;
   }
-  /*else
-		Print(L"Allocation of 'volume' successful.\n\r");*/
+  else
+  {
+		//Print(L"Allocation of 'volume' successful.\n\r");
+  }
 
   //
   // Install our protocol interfaces on the device's handle
@@ -132,20 +165,24 @@ Returns:
                   NULL
                   );
   if (EFI_ERROR (Status)) {
+    //Print(L"InstallMultipleProtocolInterfaces %x", Status);
     goto Done;
   }
   //
   // Volume installed
   //
   DEBUG ((EFI_D_INIT, "Installed NTFS filesystem on %p\n", Handle));
+  //Print(L"Installed NTFS filesystem on %p\n", Handle);
   Volume->Valid = TRUE;
 
 Done:
   if (EFI_ERROR (Status)) {
+    //Print(L"FreePool(volume)\n");
     FreePool(Volume);
   }
 
   //DiagnosticSizeOf();
+  //Print(L"Leave NtfsAllocateVolume\n");
   return Status;
 }
 
@@ -157,7 +194,7 @@ NtfsAbandonVolume (
 
 Routine Description:
 
-  Called by FatDriverBindingStop(), Abandon the volume.
+  Called by NtfsAbandonVolume(), Abandon the volume.
 
 Arguments:
 
@@ -238,11 +275,6 @@ Returns:
   return EFI_SUCCESS;
 }
 
-EFI_STATUS NTFS_EFI_LOG(char *msg)
-{
-	AsciiPrint(msg);
-}
-
 EFI_STATUS
 NtfsOpenDevice (
   IN OUT NTFS_VOLUME           *Volume
@@ -278,9 +310,11 @@ Returns:
   // Others use FatDiskIo which utilizes a Cache.
   //
 
+  //Print(L"[Init]\n");
+
   DiskIo  = Volume->DiskIo;
   Status  = DiskIo->ReadDisk (DiskIo, Volume->MediaId, 0, sizeof (NtfsBs), &NtfsBs);
-	//AsciiPrint("[Init] ReadDisk (%x, %x, %x, %x)\n\r", DiskIo, Volume->MediaId, 0, sizeof(NtfsBs));
+  //Print(L"[Init] ReadDisk (%x, %x, %x, %x)\n\r", DiskIo, Volume->MediaId, 0, sizeof(NtfsBs));
   
   if (EFI_ERROR (Status)) {
     DEBUG ((EFI_D_INIT, "NtfsOpenDevice: read of part_lba failed %r\n", Status));
@@ -294,7 +328,5 @@ Returns:
 	  return EFI_UNSUPPORTED;
   }
 
-  //gST->ConOut->OutputString(gST->ConOut, L"NtfsOpenDevice return TRUE!!!!!\n");
- 
   return EFI_SUCCESS;
 }

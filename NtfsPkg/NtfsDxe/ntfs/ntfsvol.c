@@ -41,6 +41,7 @@
 #include "ntfsdir.h"
 #include "gekko_io.h"
 #include "cache.h"
+#include "mem_allocate.h"
 
 // NTFS device driver devoptab
 static const devoptab_t devops_ntfs = {
@@ -413,8 +414,13 @@ ntfs_vd *ntfsMount (const char *name, struct _NTFS_VOLUME *interface, sec_t star
     struct _uefi_fd *fd = NULL;
 	const devoptab_t *mnt;
 
+	//Print(L"ntfsMount %a\n", name);
+
+	//CpuBreakpoint();
+
 	// Sanity check
     if (!name || !interface) {
+		//Print(L"ntfsMount EINVAL\n");
         errno = EINVAL;
         return false;
     }
@@ -426,6 +432,7 @@ ntfs_vd *ntfsMount (const char *name, struct _NTFS_VOLUME *interface, sec_t star
 
     // Check that the requested mount name is free
     if (mnt) {
+		//Print(L"ntfsMount EADDRINUSE\n");
         errno = 99; //EADDRINUSE;
 	
 		return (ntfs_vd*) mnt->deviceData;	// previous mnt data!
@@ -435,13 +442,19 @@ ntfs_vd *ntfsMount (const char *name, struct _NTFS_VOLUME *interface, sec_t star
     // Allocate the volume descriptor
     vd = (ntfs_vd*)ntfs_alloc(sizeof(ntfs_vd));
     if (!vd) {
+		//Print(L"ntfsMount ENOMEM\n");
         errno = ENOMEM;
         return false;
     }
+	else {
+		//Print(L"ntfsMount ntfs_vd!\n");
+	}
 
     // Setup the volume descriptor
+	//Print(L"vd.id! [%x]\n", vd);
     vd->id = 0;//interface->ioType;
-    vd->flags = 0;
+    //Print(L"vd.flags!\n");
+	vd->flags = 0;
     vd->uid = 0;
     vd->gid = 0;
     vd->fmask = 0;
@@ -450,13 +463,19 @@ ntfs_vd *ntfsMount (const char *name, struct _NTFS_VOLUME *interface, sec_t star
     vd->showHiddenFiles = (flags & NTFS_SHOW_HIDDEN_FILES);
     vd->showSystemFiles = (flags & NTFS_SHOW_SYSTEM_FILES);
 
+	//Print(L"invoking ntfs_alloc!\n");
     // Allocate the device driver descriptor
     fd = (struct _uefi_fd *)ntfs_alloc(sizeof(struct _uefi_fd));
     if (!fd) {
-		        ntfs_free(vd);
+		//Print(L"ntfsMount ENOMEM(2)\n");
+		ntfs_free(vd);
         errno = ENOMEM;
         return false;
     }
+	else
+	{
+		//Print(L"ntfs_alloc uefi_fd\n");
+	}
 
     // Setup the device driver descriptor
     fd->interface = interface;
@@ -469,10 +488,12 @@ ntfs_vd *ntfsMount (const char *name, struct _NTFS_VOLUME *interface, sec_t star
     // Allocate the device driver
     vd->dev = ntfs_device_alloc(name, 0, &ntfs_device_uefi_io_ops, fd);
     if (!vd->dev) {
+		//Print(L"ntfsMount ntfs_device_alloc failed\n");
         ntfs_free(fd);
         ntfs_free(vd);
         return false;
     }
+	//Print(L"ntfs_device_alloc success\n");
 
     // Build the mount flags
     if (flags & NTFS_READ_ONLY)
@@ -487,6 +508,7 @@ ntfs_vd *ntfsMount (const char *name, struct _NTFS_VOLUME *interface, sec_t star
         ntfs_log_debug("Mounting \"%s\" as read-only\n", name);
 
     // Mount the device
+	//Print(L"Invoking ntfs_device_mount\n");
     vd->vol = ntfs_device_mount(vd->dev, vd->flags);
     if (!vd->vol) {
         switch(ntfs_volume_error(errno)) {
@@ -498,6 +520,7 @@ ntfs_vd *ntfsMount (const char *name, struct _NTFS_VOLUME *interface, sec_t star
         }
         ntfs_device_free(vd->dev);
         ntfs_free(vd);
+		//Print(L"ntfsMount ntfs_device_mount FAILED (%x)\n", errno);
         return NULL;
     }
 
@@ -508,17 +531,20 @@ ntfs_vd *ntfsMount (const char *name, struct _NTFS_VOLUME *interface, sec_t star
     if (ntfsInitVolume(vd)) {
         ntfs_umount(vd->vol, true);
         ntfs_free(vd);
+		//Print(L"ntfsMount ntfsInitVolume failed\n");
         return NULL;
     }
 
     // Add the device to the devoptab table
     if (ntfsAddDevice(name, vd)) {
+		//Print(L"ntfsMount ntfsAddDevice failed\n");
         ntfsDeinitVolume(vd);
         ntfs_umount(vd->vol, true);
         ntfs_free(vd);
         return NULL;
     }
 
+	//Print(L"ntfsMount done.\n");
     return vd;
 }
 

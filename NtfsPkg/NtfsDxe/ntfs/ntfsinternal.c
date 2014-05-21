@@ -37,6 +37,7 @@
 #include "ntfsinternal.h"
 #include "ntfsdir.h"
 #include "ntfsfile.h"
+#include "mem_allocate.h"
 
 #if defined(__wii__)
 #include <sdcard/wiisd_io.h>
@@ -62,9 +63,7 @@ const INTERFACE_ID ntfs_disc_interfaces[] = {
 
 #endif
 
-#ifndef STD_MAX
-#define STD_MAX 255
-#endif
+#define DEV_OPT_MAX 16
 
 #define LWP_MutexInit(x, y) x = y
 #define LWP_MutexDestroy(x) 
@@ -101,7 +100,7 @@ int ntfsAddDevice (const char *name, void *deviceData)
     dev->deviceData = deviceData;
 
     // Add the device to the devoptab table (if there is a free slot)
-    for (i = 0; i < STD_MAX; i++) {
+    for (i = 0; i < DEV_OPT_MAX; i++) {
         if (devoptab_list[i] == devoptab_list[0] && i != 0) {
             devoptab_list[i] = dev;
             return 0;
@@ -127,7 +126,7 @@ void ntfsRemoveDevice (const char *path)
     // NOTE: We do this manually due to a 'bug' in RemoveDevice
     //       which ignores names with suffixes and causes names
     //       like "ntfs" and "ntfs1" to be seen as equals
-    for (i = 0; i < STD_MAX; i++) {
+	for (i = 0; i < DEV_OPT_MAX; i++) {
         devoptab = devoptab_list[i];
         if (devoptab && devoptab->name) {
             if (strcmp(name, devoptab->name) == 0) {
@@ -147,15 +146,19 @@ const devoptab_t *ntfsGetDevice (const char *path, bool useDefaultDevice)
     char name[128] = {0};
     int i;
 
+	//Print(L"ntfsGetDevice ....");
+
     // Get the device name from the path
     strncpy(name, path, 127);
     //strtok(name, ":/");
+
+	//Print(L" path %a\n", name);
 
     // Search the devoptab table for the specified device name
     // NOTE: We do this manually due to a 'bug' in GetDeviceOpTab
     //       which ignores names with suffixes and causes names
     //       like "ntfs" and "ntfs1" to be seen as equals
-    for (i = 0; i < STD_MAX; i++) {
+    for (i = 0; i < DEV_OPT_MAX; i++) {
         devoptab = devoptab_list[i];
         if (devoptab && devoptab->name) {
             if (strcmp(name, devoptab->name) == 0) {
@@ -170,13 +173,8 @@ const devoptab_t *ntfsGetDevice (const char *path, bool useDefaultDevice)
     //if (useDefaultDevice)
     //    return GetDeviceOpTab("");
 
+	//Print(L"ntfsGetDevice return NULL!");
     return NULL;
-}
-
-const INTERFACE_ID *ntfsGetDiscInterfaces (void)
-{
-    // Get all know disc interfaces on the host system
-    return NULL; //ntfs_disc_interfaces;
 }
 
 ntfs_vd *ntfsGetVolume (const char *path)

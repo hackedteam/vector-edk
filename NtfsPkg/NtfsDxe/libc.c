@@ -114,11 +114,11 @@ void free(void *ptr)
 	// force! fix!
 	x = (int *) ptr;
 
-	x -= 4;
+	x -= sizeof(UINTN);
 
 	if (*x == 0x30726670)
 	{
-		//Print(L"invalid pointer %x\n", ptr);
+		Print(L"invalid pointer %x\n", ptr);
 		return;
 	}
 	FreePool(ptr);
@@ -418,67 +418,3 @@ char *strstr(const char *str, const char *target)
 
 
 int errno = 0;
-
-//
-////typedef struct _LONGLONG
-////{
-////	DWORD	Lower;
-////	DWORD	Highest;
-////} LONGLONG;
-//
-//// math!
-//UINT64 _allmul(UINT64 Multiplicand, UINT64 Multiplier)
-//{
-//	//UINTN *r;
-//
-//	UINT64 result = MultU64x64(Multiplicand, Multiplier);
-//
-//	//r = &Multiplicand;
-//	//AsciiPrint("_allmul Multiplicand %x%x\n\r", r[1], r[0]);
-//	//r = &Multiplier;
-//	//AsciiPrint("_allmul Multiplier %x%x\n\r", r[1], r[0]);
-//
-//	//r = (UINTN *) &result;
-//
-//	//AsciiPrint("_allmul result %x%x\n\r", r[1], r[0]);
-//
-//	return result;
-//}
-//
-//UINT64 _alldiv(UINT64 Dividend, UINT64 Divisor)
-//{
-//	UINT64 Remainder = 0;
-//
-//	return DivS64x64Remainder(Dividend, Divisor, Remainder);
-//}
-//
-//void _allshr(UINT64 multiplier, UINT64 multiplicand)
-//{
-//	
-//	AsciiPrint("_allshr:\n\r");
-//}
-//
-//UINT64 _allshl(UINT64 Operand, UINTN Count)
-//{
-//	AsciiPrint("_allshl:\n\r");
-//	return InternalMathLShiftU64(Operand, Count);
-//}
-//
-//void _aullrem(UINT64 dividend, UINT64 divisor)
-//{
-//	AsciiPrint("_aullrem:\n\r");
-//}
-//
-//void _aullshr(UINT64 dividend, UINT64 divisor)
-//{
-//	AsciiPrint("_aullshr:\n\r");
-//}
-//
-//UINT64 _allrem(UINT64 Dividend, UINT64 Divisor)
-//{
-//	UINT64 Remainder = 0;
-//
-//	DivS64x64Remainder(Dividend, Divisor, Remainder);
-//
-//	return Remainder;
-//}

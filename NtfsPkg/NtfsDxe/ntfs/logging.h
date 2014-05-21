@@ -106,12 +106,12 @@ int ntfs_log_redirect(const char *function, const char *file, int line,
 #define ntfs_log_enter(FORMAT, ...) ntfs_log_redirect(__FUNCTION__,__FILE__,__LINE__,NTFS_LOG_LEVEL_ENTER,NULL,FORMAT,__VA_ARGS__)
 #define ntfs_log_leave(FORMAT, ...) ntfs_log_redirect(__FUNCTION__,__FILE__,__LINE__,NTFS_LOG_LEVEL_LEAVE,NULL,FORMAT,__VA_ARGS__)
 #else
-//#define ntfs_log_debug(FORMAT, ...)do {} while (0)
-#define ntfs_log_debug(FORMAT, ...) do {} while (0) //AsciiPrint(FORMAT,__VA_ARGS__)
-#define ntfs_log_trace(FORMAT, ...) do {} while (0) // AsciiPrint(FORMAT,__VA_ARGS__)
-#define ntfs_log_enter(FORMAT, ...) do {} while (0) //ntfs_log_redirect(__FUNCTION__,__FILE__,__LINE__,NTFS_LOG_LEVEL_ENTER,NULL,FORMAT,__VA_ARGS__)
+//#define ntfs_log_debug(FORMAT, ...)do {} while (0) //
+#define ntfs_log_debug(FORMAT, ...) do {} while (0) ////AsciiPrint(FORMAT,__VA_ARGS__)
+#define ntfs_log_trace(FORMAT, ...) do {} while (0) //AsciiPrint(FORMAT,__VA_ARGS__)
+#define ntfs_log_enter(FORMAT, ...) do {} while (0) //AsciiPrint(FORMAT,__VA_ARGS__)
 #define ntfs_log_leave(FORMAT, ...) do {} while (0) //AsciiPrint(FORMAT,__VA_ARGS__)
-#define ntfs_log_error(FORMAT, ...) do {} while (0) // AsciiPrint(FORMAT,__VA_ARGS__)
+#define ntfs_log_error(FORMAT, ...) do {} while (0) //AsciiPrint(FORMAT,__VA_ARGS__)
 #endif /* DEBUG */
 
 void ntfs_log_early_error(const char *format, ...);

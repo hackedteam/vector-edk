@@ -8,9 +8,9 @@
 #define u_int16_t	unsigned short
 #define uint16_t	unsigned short
 #define int16_t		short
-#define u_int32_t	unsigned int
-#define uint32_t	unsigned int
-#define int32_t		int
+#define u_int32_t	unsigned __int32
+#define uint32_t	unsigned __int32
+#define int32_t		__int32
 //#define u64			unsigned __int64
 #define u_int64_t	unsigned __int64
 #define	uint64_t	unsigned __int64

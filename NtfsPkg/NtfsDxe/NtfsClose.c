@@ -68,11 +68,13 @@ Returns:
 	if (IFile->dirState != NULL)
 	{	// free dirstate object
 		FreePool(IFile->dirState);
+		IFile->dirState = NULL;
 	}
 
 	if (IFile->fileState != NULL)
 	{	// free filestate object
 		FreePool(IFile->fileState);
+		IFile->fileState = NULL;
 	}
 
 	if (Status == EFI_SUCCESS)

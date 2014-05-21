@@ -194,6 +194,8 @@ Returns:
   EFI_STATUS            Status;
   EFI_DISK_IO_PROTOCOL  *DiskIo;
 
+  //CpuBreakpoint();
+
   //
   // Open the IO Abstraction(s) needed to perform the supported test
   //

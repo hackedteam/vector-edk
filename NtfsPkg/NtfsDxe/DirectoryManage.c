@@ -75,7 +75,7 @@ EFI_STATUS fsw_efi_dir_read(IN NTFS_IFILE *File,
 
 	if (dir == NULL)
 	{
-		//Print(L"directory not opened... fetching!\n\r");
+		//int(L"directory not opened... fetching!\n\r");
 		File->dirState = AllocateZeroPool(sizeof(ntfs_dir_state));
 		dir = File->dirState;
 

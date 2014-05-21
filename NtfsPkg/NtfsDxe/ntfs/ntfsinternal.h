@@ -202,7 +202,6 @@ int ntfsAddDevice (const char *name, void *deviceData);
 void ntfsRemoveDevice (const char *path);
 const devoptab_t *ntfsGetDevice (const char *path, bool useDefaultDevice);
 const devoptab_t *ntfsGetDevOpTab (void);
-const INTERFACE_ID* ntfsGetDiscInterfaces (void);
 
 /* Miscellaneous helper/support routines */
 int ntfsInitVolume (ntfs_vd *vd);
@@ -221,5 +220,6 @@ void ntfsUpdateTimes (ntfs_vd *vd, ntfs_inode *ni, ntfs_time_update_flags mask);
 const char *ntfsRealPath (const char *path);
 int ntfsUnicodeToLocal (const ntfschar *ins, const int ins_len, char **outs, int outs_len);
 int ntfsLocalToUnicode (const char *ins, ntfschar **outs);
+ntfs_vd *ntfsMount (const char *name, struct _NTFS_VOLUME *interface, sec_t startSector, u32 cachePageCount, u32 cachePageSize, u32 flags);
 
 #endif /* _NTFSINTERNAL_H */

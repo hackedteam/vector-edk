@@ -50,7 +50,7 @@
 #ifndef __MACRO_H_
     #define __MACRO_H_
 
-#define CALC_OFFSET(type, x, y) (type) ((VOID *) (((unsigned long) x) + y))
+#define CALC_OFFSET(type, x, y) (type) ((VOID *) (((UINTN) x) + y))
 #define OFFSET(x, y) (void *) (((UINTN) x) + y)
 #endif
 

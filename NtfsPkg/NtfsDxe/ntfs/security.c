@@ -3329,7 +3329,7 @@ int ntfs_sd_add_everyone(ntfs_inode *ni)
 	if (ret)
 		ntfs_log_perror("Failed to add initial SECURITY_DESCRIPTOR");
 	
-	free(sd);
+	//free(sd);
 	return ret;
 }
 

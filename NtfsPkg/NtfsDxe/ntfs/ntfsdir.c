@@ -44,6 +44,8 @@
 #include "ntfsinternal.h"
 #include "ntfsdir.h"
 #include "device.h"
+#include "mem_allocate.h"
+
 //#include <sys/dir.h>
 
 #define STATE(x)    (x)

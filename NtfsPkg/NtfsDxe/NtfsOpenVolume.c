@@ -84,7 +84,7 @@ Returns:
 		IFile->Type = FSW_EFI_FILE_TYPE_DIR;
 		IFile->inode = inode;
 
-		FillFileName(IFile->FullPath, "\\", "");
+		CreateFileName(IFile->FullPath, "\\", "");
 
 		Status = EFI_SUCCESS;
 	}

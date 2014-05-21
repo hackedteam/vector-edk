@@ -22,7 +22,7 @@ Revision History
 #include "ntfs/ntfsdir.h"
 
 
-UINTN EFIAPI FillFileName(CHAR8 *Destination, CHAR8 *Path, CHAR8 *FileName)
+UINTN EFIAPI CreateFileName(CHAR8 *Destination, CHAR8 *Path, CHAR8 *FileName)
 {
 	CHAR8 *Ptr, *ClearPtr;
 	BOOL bReset;
@@ -61,11 +61,12 @@ UINTN EFIAPI FillFileName(CHAR8 *Destination, CHAR8 *Path, CHAR8 *FileName)
 		goto end;
 	}
 
-	while(*Path == *FileName)
-	{	// skip path
-		Path++;
-		FileName++;
-	}
+	if (strlen(FileName) > 0)
+		while(*Path == *FileName)
+		{	// skip path
+			Path++;
+			FileName++;
+		}
 
 	if (*Destination == '\\' && *FileName == '\\')
 	{
@@ -76,6 +77,13 @@ UINTN EFIAPI FillFileName(CHAR8 *Destination, CHAR8 *Path, CHAR8 *FileName)
 	}
 	else
 	{
+		if (*Destination != '\\' && *FileName != '\\')
+		{
+			Destination++;
+			*Destination = '\\';
+
+		}
+
 		Destination++;
 
 		while(*FileName != 0x00)

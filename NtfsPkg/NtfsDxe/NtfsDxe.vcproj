@@ -236,10 +236,6 @@
 					>
 				</File>
 				<File
-					RelativePath=".\ntfs\cache2.c"
-					>
-				</File>
-				<File
 					RelativePath=".\ntfs\collate.c"
 					>
 				</File>

@@ -76,7 +76,7 @@ typedef enum {
  */
 struct ntfs_device {
 	struct ntfs_device_operations *d_ops;	/* Device operations. */
-	unsigned long d_state;			/* State of the device. */
+	UINTN d_state;			/* State of the device. */
 	char *d_name;				/* Name of device. */
 	void *d_private;			/* Private data used by the
 						   device operations. */

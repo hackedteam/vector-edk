@@ -458,7 +458,6 @@ static int utf16_to_utf8_size(const ntfschar *ins, const int ins_len, int outs_l
 	surrog = FALSE;
 	for (i = 0; i < ins_len && ins[i]; i++) {
 		unsigned short c = le16_to_cpu(ins[i]);
-		//Print(L"%s\n\r", &ins[i]);
 		if (surrog) {
 			if ((c >= 0xdc00) && (c < 0xe000)) {
 				surrog = FALSE;
@@ -547,7 +546,6 @@ static int ntfs_utf16_to_utf8(const ntfschar *ins, const int ins_len,
 
 	t = *outs;
 
-	//Print(L"Unicode: ");
 	for (i = 0; i < ins_len && ins[i]; i++) {
 	    unsigned short c = le16_to_cpu(ins[i]);
 
@@ -565,8 +563,7 @@ static int ntfs_utf16_to_utf8(const ntfschar *ins, const int ins_len,
 			*t++ = c;
 			// toremove
 			*t = 0x00;
-			//Print(L"%a", *outs);
-	    	} else {
+			} else {
 			if (c < 0x800) {
 			   	*t++ = (0xc0 | ((c >> 6) & 0x3f));
 			        *t++ = 0x80 | (c & 0x3f);

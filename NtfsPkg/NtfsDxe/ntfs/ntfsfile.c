@@ -228,7 +228,7 @@ int ntfs_open_r (struct _reent *r, void *fileStruct, const char *path, int flags
     return (int)fileStruct;
 }
 
-int ntfs_close_r (struct _reent *r, int fd)
+int ntfs_close_r (struct _reent *r, UINTN fd)
 {
 	ntfs_file_state* file = STATE(fd);
 
@@ -261,7 +261,7 @@ int ntfs_close_r (struct _reent *r, int fd)
     return 0;
 }
 
-ssize_t ntfs_write_r (struct _reent *r, int fd, const char *ptr, size_t len)
+ssize_t ntfs_write_r (struct _reent *r, UINTN fd, const char *ptr, size_t len)
 {
     ntfs_file_state* file = STATE(fd);
     ssize_t written = 0;
@@ -327,7 +327,7 @@ ssize_t ntfs_write_r (struct _reent *r, int fd, const char *ptr, size_t len)
     return written;
 }
 
-ssize_t ntfs_read_r (struct _reent *r, int fd, char *ptr, size_t len)
+ssize_t ntfs_read_r (struct _reent *r, UINTN fd, char *ptr, size_t len)
 {
 	    ntfs_file_state* file = STATE(fd);
     ssize_t read = 0;
@@ -385,7 +385,7 @@ ssize_t ntfs_read_r (struct _reent *r, int fd, char *ptr, size_t len)
     return read;
 }
 
-off_t ntfs_seek_r (struct _reent *r, int fd, off_t pos, int dir)
+off_t ntfs_seek_r (struct _reent *r, UINTN fd, off_t pos, int dir)
 {
 	    ntfs_file_state* file = STATE(fd);
     off_t position = 0;
@@ -414,7 +414,7 @@ off_t ntfs_seek_r (struct _reent *r, int fd, off_t pos, int dir)
 
     return position;
 }
-int ntfs_fstat_r (struct _reent *r, int fd, struct stat *st)
+int ntfs_fstat_r (struct _reent *r, UINTN fd, struct stat *st)
 {
 	    ntfs_file_state* file = STATE(fd);
     int ret = 0;
@@ -441,7 +441,7 @@ int ntfs_fstat_r (struct _reent *r, int fd, struct stat *st)
     return ret;
 }
 
-int ntfs_ftruncate_r (struct _reent *r, int fd, off_t len)
+int ntfs_ftruncate_r (struct _reent *r, UINTN fd, off_t len)
 {
 	    ntfs_file_state* file = STATE(fd);
     ntfs_log_trace("fd %p, len %llu\n", (void *) fd, (u64) len);
@@ -507,7 +507,7 @@ int ntfs_ftruncate_r (struct _reent *r, int fd, off_t len)
     return 0;
 }
 
-int ntfs_fsync_r (struct _reent *r, int fd)
+int ntfs_fsync_r (struct _reent *r, UINTN fd)
 {
 	    ntfs_file_state* file = STATE(fd);
     int ret = 0;

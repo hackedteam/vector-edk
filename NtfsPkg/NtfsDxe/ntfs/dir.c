@@ -1132,6 +1132,9 @@ int ntfs_readdir(ntfs_inode *dir_ni, s64 *pos,
 	INDEX_ROOT *ir;
 	INDEX_ENTRY *ie;
 	INDEX_ALLOCATION *ia = NULL;
+	// - cod (FIX FOR UNION ATTRIBUTE!)
+	index_union iu;
+
 	int rc, ir_pos, bmp_buf_size, bmp_buf_pos, eo;
 	u32 index_block_size;
 	u8 index_block_size_bits, index_vcn_size_bits;
@@ -1270,8 +1273,11 @@ int ntfs_readdir(ntfs_inode *dir_ni, s64 *pos,
 		 * Submit the directory entry to ntfs_filldir(), which will
 		 * invoke the filldir() callback as appropriate.
 		 */
+		
+		// fix (index_union *) ir modified in iu.ir = ir; (index_union *) &iu
+		iu.ir = ir;
 		rc = ntfs_filldir(dir_ni, pos, index_vcn_size_bits,
-				INDEX_TYPE_ROOT, (index_union *) ir, ie, dirent, filldir);
+				INDEX_TYPE_ROOT, (index_union *) &iu, ie, dirent, filldir);
 		if (rc) {
 			ntfs_attr_put_search_ctx(ctx);
 			ctx = NULL;
@@ -1428,8 +1434,12 @@ find_next_index_buffer:
 		 * Submit the directory entry to ntfs_filldir(), which will
 		 * invoke the filldir() callback as appropriate.
 		 */
+		
+		// fix (index_union *) ir modified in iu.ia = ia; (index_union *) &iu
+		iu.ia = ia;
+
 		rc = ntfs_filldir(dir_ni, pos, index_vcn_size_bits,
-				INDEX_TYPE_ALLOCATION, (index_union *) ia, ie, dirent, filldir);
+				INDEX_TYPE_ALLOCATION, (index_union *) &iu, ie, dirent, filldir);
 		if (rc)
 		{
 			goto err_out;

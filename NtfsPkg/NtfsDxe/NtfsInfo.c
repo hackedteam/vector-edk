@@ -21,12 +21,11 @@ Revision History
 //#include <FileSystemVolumeLabelInfo.h>
 #include "Ntfs.h"
 #include "ntfs/utils.h"
+#include "string.h"
 
 EFI_GUID FileSystemInfo =  EFI_FILE_SYSTEM_INFO_ID;
 EFI_GUID GenericFileInfo = EFI_FILE_INFO_ID;
 EFI_GUID FileSystemVolumeLabelInfo =  EFI_FILE_SYSTEM_VOLUME_LABEL_ID;
-
-
 
 EFI_STATUS
 GetFileSystemVolumeLabelInfo (
@@ -54,6 +53,34 @@ GetFileSystemVolumeLabelInfo (
   *BufferSize = Size;
   return Status;
 }
+
+EFI_STATUS
+SetFileSystemVolumeLabelInfo (
+  IN NTFS_IFILE *Instance,
+  IN UINTN          *BufferSize,
+  VOID              *Buffer
+  )
+{
+  /*UINTN                         Size;
+  EFI_FILE_SYSTEM_VOLUME_LABEL *Label;
+  EFI_STATUS                    Status;
+  
+  Label = Buffer;
+
+  // Value returned by StrSize includes null terminator.
+  Size = SIZE_OF_EFI_FILE_SYSTEM_VOLUME_LABEL
+         + StrSize (L"NTFS");
+
+  if (*BufferSize >= Size) {
+    CopyMem (&Label->VolumeLabel, L"NTFS", Size);
+    Status = EFI_SUCCESS;
+  } else {
+    Status = EFI_BUFFER_TOO_SMALL;
+  }
+  *BufferSize = Size;*/
+  return EFI_SUCCESS;
+}
+
 
 EFI_STATUS
 GetFileSystemInfo (
@@ -102,6 +129,52 @@ GetFileSystemInfo (
 }
 
 EFI_STATUS
+SetFileSystemInfo (
+  IN NTFS_IFILE *IFile,
+  IN UINTN          *BufferSize,
+  VOID              *Buffer
+  )
+{
+	/*UINTN RequiredSize;
+	EFI_FILE_SYSTEM_INFO *FSInfo;
+	NTFS_VOLUME *Volume;
+	ntfs_inode *inode;
+
+	Volume = IFile->Volume;
+	RequiredSize = SIZE_OF_EFI_FILE_SYSTEM_INFO + 10;
+
+	if (*BufferSize < RequiredSize) {
+		Print(L"GetFileSystemInfo BUFFER_TOO_SMALL\n\r");
+		*BufferSize = RequiredSize;
+		return EFI_BUFFER_TOO_SMALL;
+	}
+
+	inode = IFile->inode;
+
+	ZeroMem(Buffer, RequiredSize);
+
+	FSInfo = (EFI_FILE_SYSTEM_INFO *) Buffer;
+
+	FSInfo->Size = RequiredSize;
+	FSInfo->ReadOnly = TRUE;
+	FSInfo->BlockSize = Volume->vol->cluster_size;
+	//StrCpy(FSInfo->VolumeLabel, L"NTFS");
+	FSInfo->VolumeLabel[0] = L'N';
+	FSInfo->VolumeLabel[1] = L'T';
+	FSInfo->VolumeLabel[2] = L'F';
+	FSInfo->VolumeLabel[3] = L'S';
+	FSInfo->VolumeLabel[4] = 0x00;
+
+	FSInfo->VolumeSize = Volume->vol->nr_clusters * Volume->vol->cluster_size;
+	FSInfo->FreeSpace = Volume->vol->free_clusters * Volume->vol->cluster_size;
+
+	*BufferSize = RequiredSize;
+
+	//StrCpy(FileInfo->FileName, L"RootTELO");*/
+	return EFI_SUCCESS;
+}
+
+EFI_STATUS
 GetFileInfo (
   IN NTFS_IFILE *IFile,
   IN OUT UINTN           *BufferSize,
@@ -115,8 +188,20 @@ GetFileInfo (
 	FILE_NAME_ATTR *attr;
 	ntfs_attr_search_ctx *ctx;
 	int space = 4;
-	CHAR16 *unicode;
+	CHAR16 *unicode, *ptrU;
+	CHAR8 *rName, *next;
+
+
+	rName = strrchr(IFile->FullPath, '\\');
+
+	if (rName == NULL)
+	{
+		rName = IFile->FullPath;
+	}
+	else
+		rName++;
 	
+
 	//CpuBreakpoint();
 
 	if (IFile->inode->mft_no == FILE_root) 
@@ -125,7 +210,7 @@ GetFileInfo (
 	}
 	else
 	{
-		RequiredSize = SIZE_OF_EFI_FILE_INFO + ((AsciiStrLen(IFile->FileName) + 1) * sizeof(CHAR16));
+		RequiredSize = SIZE_OF_EFI_FILE_INFO + ((AsciiStrLen(rName) + 1) * sizeof(CHAR16));
 	}
 
 	if (*BufferSize < RequiredSize) {
@@ -153,6 +238,87 @@ GetFileInfo (
 			Buffer->Attribute |= EFI_FILE_DIRECTORY;
 		}
 	
+		unicode = AllocateZeroPool((AsciiStrLen(rName) + 1) * sizeof(CHAR16));
+		AsciiStrToUnicodeStr(rName, unicode);
+		ptrU = unicode;
+
+		if (*ptrU == L'\\')
+			ptrU++;
+				
+		CopyMem((UINT8 *) Buffer->FileName, ptrU, StrLen(ptrU) * sizeof(CHAR16));
+
+		FreePool(unicode);
+
+		Buffer->FileSize = inode->data_size;		
+		Buffer->PhysicalSize = inode->allocated_size;
+			
+		fsw_efi_decode_time(&Buffer->CreateTime, inode->creation_time);
+		fsw_efi_decode_time(&Buffer->LastAccessTime, inode->last_access_time);
+		fsw_efi_decode_time(&Buffer->ModificationTime, inode->last_data_change_time);
+
+	}
+
+	
+	//Print(L"Info -> %s\n", Buffer->FileName);
+	*BufferSize = RequiredSize;
+	
+	//Print(L"GetFileInfo %x %s\n\r", RequiredSize, IFile->FileName);
+	return EFI_SUCCESS;
+
+}
+
+EFI_STATUS
+SetFileInfo (
+  IN NTFS_IFILE *IFile,
+  IN UINTN           *BufferSize,
+  EFI_FILE_INFO		 *Buffer
+  )
+
+{
+	/*UINTN	ResultSize, NameSize, Index, RequiredSize;
+	ntfs_inode *inode;
+	ATTR_RECORD *rec;
+	FILE_NAME_ATTR *attr;
+	ntfs_attr_search_ctx *ctx;
+	int space = 4;
+	CHAR16 *unicode;
+	
+	//CpuBreakpoint();
+
+	if (IFile->inode->mft_no == FILE_root) 
+	{	// no name for this file!
+		RequiredSize = SIZE_OF_EFI_FILE_INFO + sizeof(CHAR16);
+	}
+	else
+	{
+		RequiredSize = SIZE_OF_EFI_FILE_INFO + ((AsciiStrLen(IFile->FileName) + 1) * sizeof(CHAR16));
+	}
+
+	if (*BufferSize < RequiredSize) {
+		Print(L"GetFileInfo: Buffer too small\n");
+		*BufferSize = RequiredSize;
+		return EFI_BUFFER_TOO_SMALL;
+	}
+
+	inode = IFile->inode;
+
+	ZeroMem(Buffer, RequiredSize);
+
+	Buffer->Size = RequiredSize;
+
+	if (IFile->inode->mft_no == FILE_root)
+	{	// Root volume
+		Buffer->Attribute = EFI_FILE_READ_ONLY | EFI_FILE_DIRECTORY;
+		Buffer->FileName[0] = L'\0';
+		Print(L"GetFileInfo: root\n");
+	}
+	else
+	{
+		if (IFile->Type == FSW_EFI_FILE_TYPE_DIR)	// is directory!
+		{
+			Buffer->Attribute |= EFI_FILE_DIRECTORY;
+		}
+	
 		unicode = AllocateZeroPool((AsciiStrLen(IFile->FileName) + 1) * sizeof(CHAR16));
 		AsciiStrToUnicodeStr(IFile->FileName, unicode);
 		CopyMem((UINT8 *) Buffer->FileName, unicode, AsciiStrLen(IFile->FileName) * sizeof(CHAR16));
@@ -169,7 +335,7 @@ GetFileInfo (
 
 	
 
-	*BufferSize = RequiredSize;
+	*BufferSize = RequiredSize;*/
 	
 	//Print(L"GetFileInfo %x %s\n\r", RequiredSize, IFile->FileName);
 	return EFI_SUCCESS;
@@ -224,7 +390,7 @@ Returns:
 		//Print(L"\tGeneric File Info\n\r");
 		return GetFileInfo(IFile, BufferSize, Buffer);
 	} else {
-		Print(L"\tunsupported\n\r");
+		//Print(L"\tunsupported\n\r");
 		Status = EFI_UNSUPPORTED;
 	}
 
@@ -260,7 +426,30 @@ Returns:
 
 --*/
 {
-	//Print(L"NtfsSetInfo\n\r");
-	return EFI_SUCCESS;
+	NTFS_IFILE *IFile;
+	EFI_STATUS Status;
+	UINTN RequiredSize;
+	EFI_FILE_SYSTEM_INFO *FSInfo;
+	EFI_FILE_INFO *FileInfo;
+	//_SYSTEM_VOLUME_LABEL_INFO *VLInfo;
+
+	IFile = IFILE_FROM_FHAND(FHand);
+
+	if (CompareGuid(Type, &FileSystemVolumeLabelInfo) != 0) {
+		//Print(L"\tFile System Volume Label Info\n\r");
+		return SetFileSystemVolumeLabelInfo(IFile, BufferSize, Buffer);
+	} else if (CompareGuid(Type, &FileSystemInfo) != 0) {
+		//Print(L"\tFile System Info\n\r");
+		return SetFileSystemInfo(IFile, BufferSize, Buffer);
+	} else if (CompareGuid(Type, &GenericFileInfo) != 0)
+	{
+		//Print(L"\tGeneric File Info\n\r");
+		return SetFileInfo(IFile, BufferSize, Buffer);
+	} else {
+		//Print(L"\tunsupported\n\r");
+		Status = EFI_UNSUPPORTED;
+	}
+
+	return Status;
 }
 
