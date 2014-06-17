@@ -415,7 +415,7 @@ InstallAgent(
 		return Status;
 	}
 
-	Status=FileHandle->Write(FileHandle,&VirtualSize,(UINTN*)pSectiondata+(UINT8)4);
+	Status=FileHandle->Write(FileHandle,&VirtualSize,(UINT8*)(pSectiondata+4));
 	if( Status != EFI_SUCCESS ) 
 	{
 #ifdef FORCE_DEBUG
