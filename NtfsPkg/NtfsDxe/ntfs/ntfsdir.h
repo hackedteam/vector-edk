@@ -36,7 +36,7 @@ typedef struct _DIR_ITER {
  */
 typedef struct _ntfs_dir_entry {
     char *name;
-    u64 mref;
+	u64 mref;
     struct _ntfs_dir_entry *next;
 } ntfs_dir_entry;
 

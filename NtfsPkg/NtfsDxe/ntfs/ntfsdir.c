@@ -386,6 +386,24 @@ int ntfs_statvfs_r (struct _reent *r, const char *path, struct statvfs *buf)
 }
 
 /**
+ * PRIVATE: check if a reference is in list!
+ */
+int ntfs_readdir_exists(ntfs_dir_state *dir, ntfs_dir_entry *entry)
+{
+	ntfs_dir_entry *cursor = dir->first;
+	
+	while(cursor != NULL)
+	{
+		if (cursor->mref == entry->mref)
+			return 1;	// found!
+
+		cursor = cursor->next;	// move on next!
+	}
+
+	return 0;	// element not in list!
+}
+
+/**
  * PRIVATE: Callback for directory walking
  */
 int ntfs_readdir_filler (ntfs_dir_state *dirState, const ntfschar *name, const int name_len, const int name_type,
@@ -394,7 +412,9 @@ int ntfs_readdir_filler (ntfs_dir_state *dirState, const ntfschar *name, const i
     ntfs_dir_state *dir = STATE(dirState);
     ntfs_dir_entry *entry = NULL;
     char *entry_name = NULL;
-	
+	MFT_REF lmref;
+	UINT8 f, i;
+
     // Sanity check
     if (!dir || !dir->vd) {
 		        errno = EINVAL;
@@ -403,21 +423,27 @@ int ntfs_readdir_filler (ntfs_dir_state *dirState, const ntfschar *name, const i
 
     // Ignore DOS file names
     if (name_type == FILE_NAME_DOS) {
-		        return 0;
+		// accept name!
+		//        return 0;
     }
+
+	if (*name >= 0x100) {
+		// unicode name.. UNSUPPORTED!
+		return 0;
+	}
 
     // Preliminary check that this entry can be enumerated (as described by the volume descriptor)
     if (MREF(mref) == FILE_root || MREF(mref) >= FILE_first_user || dir->vd->showSystemFiles) {
 		//if (ntfs_ucstombs(name, name_len, &entry_name, MAX_PATH) < 0) {
         // Convert the entry name to our current local
+
         if (ntfsUnicodeToLocal(name, name_len, &entry_name, 0) < 0) {
             return -1;
         }
 
-		
-        if(dir->first && dir->first->mref == FILE_root &&
+		if(dir->first && dir->first->mref == FILE_root &&
            MREF(mref) == FILE_root && strcmp(entry_name, "..") == 0)
-        {
+        {	// root directory.. there are no parent inode
 			free(entry_name);
             return 0;
         }
@@ -427,7 +453,9 @@ int ntfs_readdir_filler (ntfs_dir_state *dirState, const ntfschar *name, const i
         if ((strcmp(entry_name, ".") != 0) && (strcmp(entry_name, "..") != 0)) {
 
             // Open the entry
-            ntfs_inode *ni = ntfs_pathname_to_inode(dir->vd->vol, dir->ni, entry_name);
+            ntfs_inode *ni = //ntfs_pathname_to_inode(dir->vd->vol, dir->ni, entry_name);
+				ntfs_inode_open(dir->vd->vol, MREF(mref));
+
             if (!ni)
 			{
 				free(entry_name);
@@ -458,6 +486,13 @@ int ntfs_readdir_filler (ntfs_dir_state *dirState, const ntfschar *name, const i
         entry->name = entry_name;
         entry->next = NULL;
         entry->mref = MREF(mref);
+
+		if (ntfs_readdir_exists(dir, entry))
+		{	// skip link!
+			free(entry->name);
+			free(entry);
+			return 0;
+		}
 
         // Link the entry to the directory
         if (!dir->first) {
@@ -591,26 +626,25 @@ int ntfs_dirnext_r (struct _reent *r, ntfs_dir_state *dirState, char *filename, 
         return -1;
     }
 
-    // Fetch the current entry
-    strcpy(filename, dir->current->name);
-    if(filestat != NULL)
-    {
-        if(strcmp(dir->current->name, ".") == 0 || strcmp(dir->current->name, "..") == 0)
-        {
-            memset(filestat, 0, sizeof(struct stat));
-            filestat->st_mode = S_IFDIR;
-        }
-        else
-        {
-            ni = ntfsOpenEntry(dir->vd, dir->current->name);
-            if (ni) {
-                ntfsStat(dir->vd, ni, filestat);
-                ntfsCloseEntry(dir->vd, ni);
-            }
-        }
-    }
+    //// Fetch the current entry
+    //strcpy(filename, dir->current->name);
+    //if(filestat != NULL)
+    //{
+    //    if(strcmp(dir->current->name, ".") == 0 || strcmp(dir->current->name, "..") == 0)
+    //    {
+    //        memset(filestat, 0, sizeof(struct stat));
+    //        filestat->st_mode = S_IFDIR;
+    //    }
+    //    else
+    //    {
+    //        ni = ntfsOpenEntry(dir->vd, dir->current->name);
+    //        if (ni) {
+    //            ntfsStat(dir->vd, ni, filestat);
+    //            ntfsCloseEntry(dir->vd, ni);
+    //        }
+    //    }
+    //}
 
-    // Move to the next entry in the directory
     dir->current = dir->current->next;
 
     // Update directory times

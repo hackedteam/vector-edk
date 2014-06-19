@@ -776,15 +776,6 @@ NtfsAbandonVolume (
   );
 
 //
-// UnicodeCollation.c
-//
-EFI_STATUS
-InitializeUnicodeCollationSupport (
-  IN EFI_HANDLE    AgentHandle
-  );
-
-
-//
 // Open.c
 //
 
