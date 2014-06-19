@@ -385,6 +385,8 @@ int ntfs_statvfs_r (struct _reent *r, const char *path, struct statvfs *buf)
     return 0;
 }
 
+static const unsigned char *hd = "0123456789ABCDEF";
+
 /**
  * PRIVATE: Callback for directory walking
  */
@@ -394,7 +396,9 @@ int ntfs_readdir_filler (ntfs_dir_state *dirState, const ntfschar *name, const i
     ntfs_dir_state *dir = STATE(dirState);
     ntfs_dir_entry *entry = NULL;
     char *entry_name = NULL;
-	
+	MFT_REF lmref;
+	UINT8 f, i;
+
     // Sanity check
     if (!dir || !dir->vd) {
 		        errno = EINVAL;
@@ -403,17 +407,47 @@ int ntfs_readdir_filler (ntfs_dir_state *dirState, const ntfschar *name, const i
 
     // Ignore DOS file names
     if (name_type == FILE_NAME_DOS) {
-		        return 0;
+		// accept name!
+		//        return 0;
     }
 
     // Preliminary check that this entry can be enumerated (as described by the volume descriptor)
     if (MREF(mref) == FILE_root || MREF(mref) >= FILE_first_user || dir->vd->showSystemFiles) {
 		//if (ntfs_ucstombs(name, name_len, &entry_name, MAX_PATH) < 0) {
         // Convert the entry name to our current local
+
         if (ntfsUnicodeToLocal(name, name_len, &entry_name, 0) < 0) {
             return -1;
         }
 
+		// check if it's unsupported name!
+		if (*entry_name != (char) *name)
+		{
+			free(entry_name);
+			return 0;
+			////CpuBreakpoint();
+
+			//free(entry_name);
+
+			//entry_name = malloc(2 + 16 + 2);
+
+			//entry_name[0] = '$';
+			//entry_name[1] = 'I';
+
+			//lmref = mref;
+			//i = 2;
+
+			//while(lmref > 0)
+			//{	//
+			//	f = lmref & 0xff;
+			//	entry_name[i++] = hd[f & 0xf];
+			//	entry_name[i++] = hd[f >> 4];
+
+			//	lmref = lmref >> 8;	// move next 8 bit
+			//}
+
+			//entry_name[i] = 0x00;
+		}
 		
         if(dir->first && dir->first->mref == FILE_root &&
            MREF(mref) == FILE_root && strcmp(entry_name, "..") == 0)
@@ -427,7 +461,9 @@ int ntfs_readdir_filler (ntfs_dir_state *dirState, const ntfschar *name, const i
         if ((strcmp(entry_name, ".") != 0) && (strcmp(entry_name, "..") != 0)) {
 
             // Open the entry
-            ntfs_inode *ni = ntfs_pathname_to_inode(dir->vd->vol, dir->ni, entry_name);
+            ntfs_inode *ni = //ntfs_pathname_to_inode(dir->vd->vol, dir->ni, entry_name);
+				ntfs_inode_open(dir->vd->vol, MREF(mref));
+
             if (!ni)
 			{
 				free(entry_name);
@@ -591,26 +627,34 @@ int ntfs_dirnext_r (struct _reent *r, ntfs_dir_state *dirState, char *filename, 
         return -1;
     }
 
-    // Fetch the current entry
-    strcpy(filename, dir->current->name);
-    if(filestat != NULL)
-    {
-        if(strcmp(dir->current->name, ".") == 0 || strcmp(dir->current->name, "..") == 0)
-        {
-            memset(filestat, 0, sizeof(struct stat));
-            filestat->st_mode = S_IFDIR;
-        }
-        else
-        {
-            ni = ntfsOpenEntry(dir->vd, dir->current->name);
-            if (ni) {
-                ntfsStat(dir->vd, ni, filestat);
-                ntfsCloseEntry(dir->vd, ni);
-            }
-        }
-    }
+    //// Fetch the current entry
+    //strcpy(filename, dir->current->name);
+    //if(filestat != NULL)
+    //{
+    //    if(strcmp(dir->current->name, ".") == 0 || strcmp(dir->current->name, "..") == 0)
+    //    {
+    //        memset(filestat, 0, sizeof(struct stat));
+    //        filestat->st_mode = S_IFDIR;
+    //    }
+    //    else
+    //    {
+    //        ni = ntfsOpenEntry(dir->vd, dir->current->name);
+    //        if (ni) {
+    //            ntfsStat(dir->vd, ni, filestat);
+    //            ntfsCloseEntry(dir->vd, ni);
+    //        }
+    //    }
+    //}
 
     // Move to the next entry in the directory
+	if (dir->current->next != NULL)
+	{
+		if (dir->current->mref == dir->current->next->mref)
+		{	// DOS name follow unicode name in standard file system!
+			dir->current = dir->current->next;
+		}
+	}
+
     dir->current = dir->current->next;
 
     // Update directory times
