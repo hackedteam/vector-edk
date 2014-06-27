@@ -111,7 +111,7 @@ Returns:
 	// Perform some parameter checking
 	//
 	if (FileName == NULL || (NewHandle == NULL)) {
-		//Print("NtfsOpen: FileName is null!\n\r");
+		Print("NtfsOpen: FileName is null!\n\r");
 		return EFI_INVALID_PARAMETER;
 	}
 
@@ -136,18 +136,18 @@ Returns:
   // Check for a valid mode
   //
   switch (OpenMode) {
-	  case EFI_FILE_MODE_READ:
-		  flags = O_RDONLY; mode = 0; break;
-	  case EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE:
-		  flags = O_RDWR; mode = 0; break;
-	  case EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE:
-		  flags = O_CREAT | O_RDWR; mode = 0; break;
-		break;
+  case EFI_FILE_MODE_READ:
+	  flags = O_RDONLY; mode = 0; break;
+  case EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE:
+	  flags = O_RDWR; mode = 0; break;
+  case EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE:
+	  flags = O_CREAT | O_RDWR; mode = 0; break;
+    break;
 
-	  default:
-		  //Print(L"NtfsOpen -> OpenMode invalid! %x\n\r", OpenMode);
-		  flags = 0; mode = 0;
-		return EFI_INVALID_PARAMETER;
+  default:
+	  //Print(L"NtfsOpen -> OpenMode invalid! %x\n\r", OpenMode);
+	  flags = 0; mode = 0;
+    return EFI_INVALID_PARAMETER;
   }
   
   //
