@@ -7554,6 +7554,28 @@ UINT8 calculateChecksum8(UINT8* buffer, UINT32 bufferSize)
     return (UINT8) 0x100 - counter;
 }
 
+STATIC 
+PEFI_COMMON_SECTION_HEADER GetFirstFileSection(PEFI_FFS_FILE_HEADER pFile)
+{
+	UINT32 length;
+	UINT8 *pSection;
+
+	length = efi_ffs_file_size(pFile);
+	pSection = (UINT8 *) pFile;
+
+	if (length == 0x00ffffff)
+	{
+		pSection += sizeof(EFI_FFS_FILE_HEADER2);
+	}
+	else
+	{
+		pSection += sizeof(EFI_FFS_FILE_HEADER);
+	}
+
+	return (PEFI_COMMON_SECTION_HEADER) pSection;
+}
+
+
 STATIC
 int
 find_volume(UINT8 *buffer, UINT32 size)
@@ -7587,15 +7609,20 @@ UINT8
 {
 	PEFI_FIRMWARE_VOLUME_HEADER pFVH;
 	EFI_GUID FileVolumeGUID = { 0x7a9354d9, 0x0468, 0x444a, { 0x81, 0xce, 0x0b, 0xf6, 0x17, 0xd8, 0x90, 0xdf }};
-
+	EFI_GUID UefiVolumeGUID = { 0x8c8ce578, 0x8a3d, 0x4f1c, { 0x99, 0x35, 0x89, 0x61, 0x85, 0xc3, 0x2d, 0xd3 }};
 	pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) buffer;
 
 
 	if (memcmp(&pFVH->GUID, &FileVolumeGUID, sizeof(EFI_GUID)) == 0)
 		return 1;
 
+	if (memcmp(&pFVH->GUID, &UefiVolumeGUID, sizeof(EFI_GUID)) == 0)
+		return 1;
+
 	return 0;
 }
+
+
 
 UINT8 *
 ptr_to_volume(UINT8 *buffer, UINT32 size, UINT8 index)
@@ -7909,8 +7936,24 @@ void volume_scan(UINT8 *buffer, UINT32 size);
 		}
 	}
 }*/
+PEFI_FFS_FILE_HEADER LookupFileInVolume(PEFI_FIRMWARE_VOLUME_HEADER pFVH, UINT32 Index)
+{
+	PEFI_FFS_FILE_HEADER pPtr;
+	UINT8 *RawPtr;
 
-UINT8 *OpenVolume(UINT8 *buffer, UINT32 size, UINT8 VolumeIndex, UINT32 *DstSize)
+	RawPtr = (UINT8 *) pFVH;
+	pPtr = NULL;
+	pPtr = FindFileInVolume(pFVH, pPtr);
+	while(Index > 0)
+	{
+		pPtr = FindFileInVolume(pFVH, pPtr);
+		Index--;
+	}
+	
+	return pPtr;
+}
+
+UINT8 *OpenVolume(UINT8 *buffer, UINT32 size, UINT8 VolumeIndex, UINT16 FileIndex, UINT32 *DstSize)
 {
 	DWORD fsize;
 	DWORD buffer_size;
@@ -7922,18 +7965,15 @@ UINT8 *OpenVolume(UINT8 *buffer, UINT32 size, UINT8 VolumeIndex, UINT32 *DstSize
 	EFI_COMPRESSION_SECTION* compressedSectionHeader;
 	PEFI_FFS_FILE_HEADER pFirstFile;
 	
-	//printf("OpenVolume lookup\n");
 	pVol = (PEFI_FIRMWARE_VOLUME_HEADER) ptr_to_volume(buffer, size, VolumeIndex);
 
 	if (pVol == NULL)
 	{	// cannot find volume!
-		//printf("OpenVolume failed\n");
 		goto ERROR;
 	}
 
-	if (VolumeImageCompressed((UINT8 *) pVol, pVol->FvLength) == 0)
-	{	// not compressed! return a copy of volume
-		//printf("OpenVolume not compressed.. return an alias\n");
+	if (FileIndex == 0xffff)
+	{	// FileIndex -1
 		decompressedData = malloc(pVol->FvLength);
 		memset(decompressedData, 0, pVol->FvLength);
 
@@ -7943,14 +7983,9 @@ UINT8 *OpenVolume(UINT8 *buffer, UINT32 size, UINT8 VolumeIndex, UINT32 *DstSize
 		return decompressedData;
 	}
 
-	pFirstFile = FindFileInVolume((PEFI_FIRMWARE_VOLUME_HEADER ) pVol, NULL);
-	if (pFirstFile == NULL)
-	{
-		//printf("FindFileInVolume failed\n");
-		goto ERROR;
-	}
+	pFirstFile = LookupFileInVolume(pVol, FileIndex);
+	
 	pData = (UINT8 *) pFirstFile;
-
 	fsize = Expand24bit(pFirstFile->Size);
 
 	if (fsize == 0x00ffffff)
@@ -7963,35 +7998,35 @@ UINT8 *OpenVolume(UINT8 *buffer, UINT32 size, UINT8 VolumeIndex, UINT32 *DstSize
 		pData += sizeof(EFI_FFS_FILE_HEADER);
 	}
 
-	//printf("File found %x Size %x\n", pFirstFile, Expand24bit(pFirstFile->Size));
-	
-	//printf("pCommonSectionHeader\n");
 	pCommonSectionHeader = (PEFI_COMMON_SECTION_HEADER) pData;
 	if (pCommonSectionHeader->Type == EFI_SECTION_COMPRESSION)
 	{	// Compressed!
-		EFI_COMPRESSION_SECTION *compressedSectionHeader = (EFI_COMPRESSION_SECTION *) pCommonSectionHeader;
-		//printf("section compressed\n");
-		
-		pData = pData + sizeof(EFI_COMPRESSION_SECTION);
+		pCommonSectionHeader = (PEFI_COMMON_SECTION_HEADER) pData;
 
-		if (compressedSectionHeader->CompressionType == EFI_CUSTOMIZED_COMPRESSION)
-		{
-			//printf("Customized compression [LZMA trying]\n");
+		if (pCommonSectionHeader->Type == EFI_SECTION_COMPRESSION)
+		{	// Compressed!
+			compressedSectionHeader = (EFI_COMPRESSION_SECTION *) pCommonSectionHeader;
+
+			pData = pData + sizeof(EFI_COMPRESSION_SECTION);
 			decompressedData = unpack_lzma(pData, (int) Expand24bit(compressedSectionHeader->Size), &tmpDestSize);
+
+			if (decompressedData == NULL)
+			{
+				decompressedData = unpack_EfiCompress(pData, (int) Expand24bit(compressedSectionHeader->Size), &tmpDestSize);
+				
+				if (decompressedData == NULL)
+				{	// unknown algo!
+					goto ERROR;
+				}
+			}
+
+			if (decompressedData != NULL)
+			{
+
+			}
 		}
-		else if (compressedSectionHeader->CompressionType == EFI_STANDARD_COMPRESSION)
-		{
-			//printf("Standard compression [EFI|TIANO trying]\n");
-			decompressedData = unpack_EfiCompress(pData, (int) Expand24bit(compressedSectionHeader->Size), &tmpDestSize);
-		}
-		else if (compressedSectionHeader->CompressionType == EFI_NOT_COMPRESSED)
-		{
-			//printf("Unsupported EFI algo!\n");
-		}
-	
 	}
 
-	//printf("\nReturn %x %x\n", decompressedData, tmpDestSize);
 	*DstSize = tmpDestSize;
 	return decompressedData;
 
@@ -8000,28 +8035,28 @@ ERROR:
 	return NULL;
 }
 
-UINT8 *CloseVolume(UINT8 *fvVolume, UINT32 fvVolumeSize, UINT8 *buffer, UINT32 size, UINT8 VolumeIndex, UINT32 *DstVolumeSize)
+UINT8 *CloseVolume(UINT8 *fvVolume, UINT32 fvVolumeSize, UINT8 *buffer, UINT32 size, UINT8 VolumeIndex, UINT16 FileIndex, UINT32 *DstVolumeSize)
 {
 	DWORD fsize;
 	DWORD buffer_size;
 	UINT8 *pData, *compressedSection;
 	PEFI_COMMON_SECTION_HEADER pCommonSectionHeader;
 	PEFI_FIRMWARE_VOLUME_HEADER pVol = NULL;
-	UINT32 decompressedsize, tmpDestSize;
+	int decompressedsize, tmpDestSize;
 	UINT8 *newVolume, *tmp;
 	EFI_COMPRESSION_SECTION* compressedSectionHeader, *newCompressedSectionHeader;
 	PEFI_FFS_FILE_HEADER pFirstFile, pUpdateFile;
 	UINT32 copy_size, header_file_length;
 
 	pVol = (PEFI_FIRMWARE_VOLUME_HEADER) ptr_to_volume(fvVolume, fvVolumeSize, VolumeIndex);
-
+	newVolume = NULL;
+	
 	if (pVol == NULL)
 	{	// cannot find volume!
-		newVolume = NULL;
 		goto ERROR;
 	}
 
-	if (VolumeImageCompressed((UINT8 *) pVol, pVol->FvLength) == 0)
+	if (FileIndex == 0xffff)
 	{	// not compressed! return a copy of volume
 		newVolume = malloc(fvVolumeSize);
 		memcpy(newVolume, buffer, size);
@@ -8029,7 +8064,7 @@ UINT8 *CloseVolume(UINT8 *fvVolume, UINT32 fvVolumeSize, UINT8 *buffer, UINT32 s
 	}
 	else
 	{
-		pFirstFile = FindFileInVolume(pVol, NULL);
+		pFirstFile = LookupFileInVolume(pVol, FileIndex);
 		pData = (UINT8 *) pFirstFile;
 
 		fsize = Expand24bit(pFirstFile->Size);
@@ -8076,7 +8111,7 @@ UINT8 *CloseVolume(UINT8 *fvVolume, UINT32 fvVolumeSize, UINT8 *buffer, UINT32 s
 		memcpy(newVolume, fvVolume, copy_size);
 
 		newCompressedSectionHeader = (EFI_COMPRESSION_SECTION *)(newVolume + copy_size);
-		pUpdateFile = FindFileInVolume((PEFI_FIRMWARE_VOLUME_HEADER) newVolume, NULL);
+		pUpdateFile = LookupFileInVolume((PEFI_FIRMWARE_VOLUME_HEADER) newVolume, FileIndex);
 		memcpy(newVolume + copy_size + sizeof(EFI_COMPRESSION_SECTION), tmp, tmpDestSize);
 
 		memcpy(newCompressedSectionHeader, compressedSectionHeader, sizeof(EFI_COMPRESSION_SECTION));
@@ -8110,7 +8145,6 @@ ERROR:
 	return NULL;
 }
 
-
 UINT8* VolumeHeader(UINT8 *buffer, UINT32 size)
 {
   PEFI_FIRMWARE_VOLUME_HEADER pFVH;
@@ -8128,11 +8162,12 @@ UINT8* VolumeHeader(UINT8 *buffer, UINT32 size)
     
     if (pFVH->Signature == FVH_SIGNATURE)
       return (UINT8*) pFVH;
-    pos += 16;
+    pos += 4;
   }
   
   return NULL;
 }
+
 
 UINT8 PushFileInVolume(UINT8 *buffer, UINT32 size, UINT8 *NewFile, UINT32 fileSize)
 {
@@ -8361,6 +8396,91 @@ UINT8 VolumeImageCompressed(UINT8 *buffer, UINT32 size)
 			return 1;
 	}
 
+	return 0;
+}
+
+UINT8 LookupDxeImage(UINT8 *buffer, UINT32 size, UINT8 *IndexOut, UINT16 *FileIndex)
+{
+	UINT8 MaxVolume = (UINT8) find_volume(buffer, size);
+	UINT8 i;
+	UINT8 *VolumePtr;
+	UINT32 VolumeSize, c;
+			
+	if (MaxVolume == 0)
+	{
+		goto ERROR;
+	}
+
+	for(i = 0; i < MaxVolume; i++)
+	{
+		UINT32 FileInVolume;
+		PEFI_FIRMWARE_VOLUME_HEADER pVol;
+		PEFI_FFS_FILE_HEADER pFirstFile;
+
+		VolumePtr = ptr_to_volume(buffer, size, i);
+		VolumeSize = volume_size(buffer, size, i);
+
+		if (VolumePtr == NULL || VolumeSize == 0)
+			continue;
+
+		if (IsFileVolume(VolumePtr, VolumeSize) == 0)
+			continue;
+		
+		// Volume may be candidate
+		FileInVolume = CountFileInVolume((PEFI_FIRMWARE_VOLUME_HEADER) VolumePtr);
+
+		pVol = (PEFI_FIRMWARE_VOLUME_HEADER) VolumePtr;
+		
+		pFirstFile = NULL;
+
+		for(c = 0; c < FileInVolume; c++)
+		{
+			UINT8 *pData;
+			PEFI_COMMON_SECTION_HEADER pSection;
+			EFI_COMPRESSION_SECTION *compressedSectionHeader;
+
+			UINT32 fsize;
+
+			pFirstFile = FindFileInVolume(pVol, pFirstFile);
+			pData = (UINT8 *) pFirstFile;
+
+			fsize = Expand24bit(pFirstFile->Size);
+
+			pSection = GetFirstFileSection(pFirstFile);
+
+			if (pSection->Type == EFI_SECTION_COMPRESSED)
+			{
+				*IndexOut = i;
+				*FileIndex = c;
+				return 1;
+			}
+
+			/*if (pFirstFile->Type == EFI_FV_FILETYPE_DXE_CORE)
+			{	// candidate .. may be uncompressed!
+				
+				*IndexOut = i;
+				*FileIndex = -1;
+				return TRUE;
+			}
+			else*/ if (pFirstFile->Type == EFI_FV_FILETYPE_FIRMWARE_VOLUME_IMAGE)
+			{	// EFI_FV_FILETYPE_DXE_CORE
+				// section
+				*IndexOut = i;
+				*FileIndex = c;
+				return 1;
+			}
+			else if (pFirstFile->Type == EFI_FV_FILETYPE_DRIVER)
+			{
+				*IndexOut = i;
+				*FileIndex = (UINT16) 0xffff;
+				return 1;
+			}
+		}
+	}
+
+ERROR:	// no dxe found
+	*IndexOut = 0;
+	*FileIndex = 0;
 	return 0;
 }
 
@@ -8693,6 +8813,84 @@ ERROR:
   return PyLong_FromUnsignedLong((unsigned long) -1);
 }
 
+STATIC
+PyObject*
+Py_LookupDxeImage(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SpiDataObject;
+  UINT32        SpiDataSize;
+  EFI_STATUS    Status;
+  UINT8         *SpiBuffer, *VolumePtr;
+  UINT32        Result;
+  UINT16		FileIndex;
+  UINT8			VolumeIndex;
+  UINT32		Mask24;
+  UINT16		Mask16;
+  
+  // Pick the compress function based on compression type
+
+  Status = PyArg_ParseTuple(Args, "Oi", &SpiDataObject, &SpiDataSize);
+  if (Status == 0) {
+    printf("PyArg_ParseTuple failed!\n");
+    goto ERROR;
+  }
+
+  if (SpiDataObject->ob_type->tp_as_buffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    goto ERROR;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SpiBuffer = PyMem_Malloc(SpiDataSize);
+  if (SpiBuffer == NULL) {
+   // printf("[FvVolumeAddress] cannot alloc flat buffer for SPI\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SpiDataObject, SpiBuffer, SpiDataSize);
+  if (Status != EFI_SUCCESS) {
+    //printf("Buffer segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  if (LookupDxeImage(SpiBuffer, SpiDataSize, &VolumeIndex, &FileIndex))
+  {
+    printf("LookupDxeImage return %x %x\n", VolumeIndex, FileIndex);
+    Mask24 = (UINT32) VolumeIndex << 16;
+	Mask16 = (UINT32) FileIndex;
+    Result = Mask24 | Mask16;
+	printf("Result return %x\n", Result);
+  }
+  else
+  {
+    printf("LookupDxeImage fail\n");
+    Result = 0xff000000;
+  }
+  
+  PyMem_Free(SpiBuffer);
+  
+  return PyLong_FromUnsignedLong((unsigned long)Result);
+
+ERROR:
+  if (SpiBuffer != NULL) {
+    PyMem_Free(SpiBuffer);
+  }
+  printf("LookupDxeImage: ERROR\n");
+  return PyLong_FromUnsignedLong((unsigned long) -1);
+}
+
 
 STATIC
 PyObject*
@@ -8767,6 +8965,45 @@ ERROR:
 }
 
 STATIC
+ PyObject*
+ Py_VolumeFromHandle(
+   PyObject    *Self,
+   PyObject    *Args
+ )
+{
+  UINT32        VolumeHandle;
+  EFI_STATUS    Status;
+  UINT32        Result;
+  UINT8			VolumeIndex;
+  UINT16		FileIndex;
+  
+  // Pick the compress function based on compression type
+  Result = 0xffffffff;
+  Status = PyArg_ParseTuple(Args, "i", &VolumeHandle);
+  
+  if (Status == 0) {
+    printf("[VolumeFromHandle] PyArg_ParseTuple failed!\n");
+    goto ERROR;
+  }
+
+  if ((VolumeHandle & 0xff000000) != 0)
+  {
+    //printf("Error to access to volume handle");
+	PyErr_SetString(PyExc_Exception, "handle not valid!\n");
+    goto ERROR;
+  }
+  
+  VolumeIndex = (UINT8) (VolumeHandle >> 16);
+  FileIndex = (UINT16) (VolumeHandle & 0xffff);
+  
+   return PyLong_FromUnsignedLong((unsigned long) VolumeIndex);
+
+ERROR:
+  return PyLong_FromUnsignedLong((unsigned long) -1);
+
+}
+
+STATIC
 PyObject*
 Py_FvOpenVolume(
   PyObject    *Self,
@@ -8774,19 +9011,32 @@ Py_FvOpenVolume(
   )
 {
   PyObject      *SpiObject;
-  UINT32        SpiLength, NewBufferLength, VolumeIndex;
+  UINT32        SpiLength, NewBufferLength, VolumeHandle;
   EFI_STATUS    Status;
   UINT8         *SpiBuffer, *NewBuffer;
   UINT32        Result;
+  UINT8			VolumeIndex;
+  UINT16		FileIndex;
   
   // Pick the compress function based on compression type
   Result = 0xffffffff;
-  Status = PyArg_ParseTuple(Args, "Oii", &SpiObject, &SpiLength, &VolumeIndex);
+  Status = PyArg_ParseTuple(Args, "Oii", &SpiObject, &SpiLength, &VolumeHandle);
+  
   if (Status == 0) {
     //printf("[FvOpenVolume] PyArg_ParseTuple failed!\n");
     return NULL;
   }
 
+  if ((VolumeHandle & 0xff000000) != 0)
+  {
+    printf("Error to access to volume handle");
+	PyErr_SetString(PyExc_Exception, "OpenVolume handle not valid!\n");
+    goto ERROR;
+  }
+  
+  VolumeIndex = (UINT8) (VolumeHandle >> 16);
+  FileIndex = (UINT16) (VolumeHandle & 0xffff);
+  
   if (SpiObject->ob_type->tp_as_buffer == NULL
       || SpiObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
       || SpiObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
@@ -8812,7 +9062,7 @@ Py_FvOpenVolume(
     goto ERROR;
   }
 
-  NewBuffer = OpenVolume(SpiBuffer, SpiLength, VolumeIndex, &NewBufferLength);
+  NewBuffer = OpenVolume(SpiBuffer, SpiLength, VolumeIndex, FileIndex, &NewBufferLength);
 
   PyMem_Free(SpiBuffer);	// free buffer
   
@@ -8929,19 +9179,31 @@ Py_FvCloseVolume(
   )
 {
   PyObject      *VolumeObject, *DxeObject;
-  UINT32        VolumeLength, DxeLength, VolumeIndex, NewBufferLength;
+  UINT32        VolumeLength, DxeLength, VolumeHandle, NewBufferLength;
   EFI_STATUS    Status;
   UINT8         *VolumeBuffer, *DxeFileBuffer, *NewBuffer;
   UINT32        Result;
+  UINT8			VolumeIndex;
+  UINT16		FileIndex;
   
   // Pick the compress function based on compression type
   Result = 0xffffffff;
-  Status = PyArg_ParseTuple(Args, "OiOii", &VolumeObject, &VolumeLength, &DxeObject, &DxeLength, &VolumeIndex);
+  Status = PyArg_ParseTuple(Args, "OiOii", &VolumeObject, &VolumeLength, &DxeObject, &DxeLength, &VolumeHandle);
   if (Status == 0) {
     //printf("[FvCloseVolume] PyArg_ParseTuple failed!\n");
     return NULL;
   }
 
+  if ((VolumeHandle & 0xff000000) != 0)
+  {
+    printf("Error to access to volume handle");
+	PyErr_SetString(PyExc_Exception, "OpenVolume handle not valid!\n");
+    goto ERROR;
+  }
+  
+  VolumeIndex = (UINT8) (VolumeHandle >> 16);
+  FileIndex = (UINT16) (VolumeHandle & 0xffff);
+  
   if (VolumeObject->ob_type->tp_as_buffer == NULL
       || VolumeObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
       || VolumeObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
@@ -8988,7 +9250,8 @@ Py_FvCloseVolume(
   //printf("Buffer %x %s", SrcDataSize, SrcBuf);
   
   //printf("Scanning buffer...");
-  NewBuffer = CloseVolume(VolumeBuffer, VolumeLength, DxeFileBuffer, DxeLength, VolumeIndex, &NewBufferLength);
+  // CloseVolume -> VolumeIndex must be 0
+  NewBuffer = CloseVolume(VolumeBuffer, VolumeLength, DxeFileBuffer, DxeLength, 0, FileIndex, &NewBufferLength);
   //printf("[FvCloseVolume]CloseVolume %x %x\n", NewBuffer, NewBufferLength);
   
   PyMem_Free(VolumeBuffer);	// free buffer
@@ -9136,9 +9399,11 @@ Py_MemSet(
 #define FV_VOLUME_ADDRESS_DOCS "FvVolumeAddress(spimem, spilen, volindex): Return base address of volume.\n"
 #define FV_VOLUME_GET_DOCS "FvVolumeGet(spimem, spilen, volindex): Buffer.\n"
 #define FV_VOLUME_IS_FILE_DOCS "FvIsFileVolume(buffer, len): Is a valid container?\n"
-#define FV_OPEN_VOLUME_DOCS "FvOpenVolume(spimem, spilen, volindex): Return a new buffer with unpacked volume.\n"
+#define FV_OPEN_VOLUME_DOCS "FvOpenVolume(spimem, spilen, volhandle): Return a new buffer with unpacked volume.\n"
 #define FV_VOLUME_ADD_FILE_DOCS "FvVolumeAddFile(volume, volumelength, newfile, newfilelength): Push file in volume.\n"
-#define FV_VOLUME_CLOSE_DOCS "FvCloseVolume(originalvol, originalvolsize, volume, volumelength, index): Return the new volume.\n"
+#define FV_VOLUME_CLOSE_DOCS "FvCloseVolume(originalvol, originalvolsize, volume, volumelength, volhandle): Return the new volume.\n"
+#define DXE_VOLUME_LOOKUP_DOCS "LookupVolumeDocs(spimem, spilen) : Return an handle to describe volumeindex"
+#define VOLUMEFROMHANDLE_DOCS "VolumeFromHandle(handle): Return index of volume"
 #define MEMSET_DOCS	"MemSet(buffer, len, value): memset()"
 
 /*
@@ -9532,6 +9797,8 @@ static PyMethodDef posix_methods[] = {
   {"FvVolumeAddFile", (PyCFunction) Py_FvVolumeAddFile,METH_VARARGS, FV_VOLUME_ADD_FILE_DOCS},
   {"FvCloseVolume",   (PyCFunction) Py_FvCloseVolume,  METH_VARARGS, FV_VOLUME_CLOSE_DOCS},
   {"FvVolumeGet",     (PyCFunction) Py_FvVolumeGet, METH_VARARGS, FV_VOLUME_GET_DOCS},
+  {"LookupDxeImage",  (PyCFunction) Py_LookupDxeImage, METH_VARARGS, DXE_VOLUME_LOOKUP_DOCS},
+  {"VolumeFromHandle", (PyCFunction) Py_VolumeFromHandle, METH_VARARGS, VOLUMEFROMHANDLE_DOCS},
   {"MemSet",          (PyCFunction) Py_MemSet, METH_VARARGS, MEMSET_DOCS},
 //  {"rdtsc",             posix_rdtsc, 0, efi_rdtsc__doc__},
 //  {"cpuid",             posix_cpuid, 0, efi_cpuid__doc__},

@@ -63,6 +63,7 @@ from chipsec.file import *
 #   SPI write: ~140 sec per 1MB (DBC=4)
 # 
 SPI_READ_WRITE_MAX_DBC = 64
+SPI_READ_WRITE_MIN_DBC = 4
 SPI_READ_WRITE_DEF_DBC = 64
 
 ##############################################################################################################
@@ -619,6 +620,11 @@ class SPI:
         return self.write_spi( spi_fla, struct.unpack('c'*len(buf), buf) )
         #return self.write_spi( spi_fla, struct.unpack('B'*len(buf), buf) )
 
+    def simulate_write_spi_from_file(self, spi_fla, filename ):
+        buf = read_file( filename )
+        return self.simulate_write_spi( spi_fla, struct.unpack('c'*len(buf), buf) )
+
+
     def read_spi(self, spi_fla, data_byte_count ):
         spi_base = self.rcba_spi_base  
         buf = []      
@@ -638,9 +644,12 @@ class SPI:
            return None
 
         for i in range(n):
-           if (i == 0) or ((i % 4096) == 0):
+           spi_fla_addr = spi_fla + i*dbc
+           if (spi_fla_addr % 65536) == 0:
              if logger().UTIL_TRACE or logger().VERBOSE:
-                logger().log( "[spi] reading chunk %d of 0x%x bytes from 0x%X" % (i, dbc, spi_fla + i*dbc) )
+                logger().log( "[spi] reading @ 0x%x - 0x%x-byte remainder" % (spi_fla_addr, data_byte_count - (i*dbc) ))
+                #self.erase_spi_block(spi_fla + i * dbc)
+
            if not self._send_spi_cycle( HSFCTL_READ_CYCLE, dbc-1, spi_fla + i*dbc ):
               logger().error( "SPI flash read failed" )
            else:
@@ -678,8 +687,8 @@ class SPI:
         spi_base = self.rcba_spi_base  
         data_byte_count = len(buf)
         #modificata da 4 a 64 ByGio     
-		#dbc = 64       
-        dbc = 4       
+        #dbc = 64       
+        dbc = SPI_READ_WRITE_MIN_DBC
         n = data_byte_count / dbc
         r = data_byte_count % dbc
         logprogress = data_byte_count / 4096
@@ -693,10 +702,12 @@ class SPI:
            return None
 
         for i in range(n):
-           if i == 0 or ((i % logprogress) == 0):
+           spi_fla_addr = spi_fla + i*dbc
+           if (spi_fla_addr % 4096) == 0:
              if logger().UTIL_TRACE or logger().VERBOSE:
-                logger().log( "[spi] writing chunk %d of 0x%x bytes to 0x%X" % (i, dbc, spi_fla + i*dbc) )
-           
+                logger().log( "[spi] writing @ 0x%x - 0x%x-byte remainder" % (spi_fla_addr, data_byte_count - (i*dbc) ))
+                #self.erase_spi_block(spi_fla + i * dbc)
+
            dword_value = (ord(buf[i*dbc + 3]) << 24) | (ord(buf[i*dbc + 2]) << 16) | (ord(buf[i*dbc + 1]) << 8) | ord(buf[i*dbc])
            if logger().VERBOSE:
               logger().log( "[spi] in FDATA00 = 0x%08x" % dword_value )
@@ -720,6 +731,53 @@ class SPI:
            
         return write_ok
 
+    def simulate_write_spi(self, spi_fla, buf ):
+        write_ok = True
+        spi_base = self.rcba_spi_base  
+        data_byte_count = len(buf)
+        
+        dbc = 4       
+        n = data_byte_count / dbc
+        r = data_byte_count % dbc
+        logprogress = data_byte_count / 4096
+
+        if logger().UTIL_TRACE or logger().VERBOSE:
+           logger().log( "[spi] writing 0x%x bytes to SPI at FLA = 0x%X (in %d 0x%x-byte chunks + 0x%x-byte remainder)" % (data_byte_count, spi_fla, n, dbc, r) )
+
+        cycle_done = self._wait_SPI_flash_cycle_done()
+        if not cycle_done:
+           logger().error( "SPI cycle not ready" )
+           return None
+
+        for i in range(n):
+           if i == 0 or ((i % logprogress) == 0):
+             if logger().UTIL_TRACE or logger().VERBOSE:
+                logger().log( "[spi] writing chunk %d of 0x%x bytes to 0x%X" % (i, dbc, spi_fla + i*dbc) )
+                #self.erase_spi_block(spi_fla + i * dbc)
+
+           dword_value = (ord(buf[i*dbc + 3]) << 24) | (ord(buf[i*dbc + 2]) << 16) | (ord(buf[i*dbc + 1]) << 8) | ord(buf[i*dbc])
+           if logger().VERBOSE:
+              logger().log( "[spi] in FDATA00 = 0x%08x" % dword_value )
+           #self.cs.mem.write_physical_mem_dword( spi_base + PCH_RCBA_SPI_FDATA00, dword_value )
+           #if not self._send_spi_cycle( HSFCTL_WRITE_CYCLE, dbc-1, spi_fla + i*dbc ):
+           #   write_ok = False
+           #   logger().error( "SPI flash write cycle failed" )
+
+        if (0 != r):
+           if logger().UTIL_TRACE or logger().VERBOSE:
+              logger().log( "[spi] writing remaining 0x%x bytes to FLA = 0x%X" % (r, spi_fla + n*dbc) )
+           dword_value = 0
+           for j in range(r):
+              dword_value |= (ord(buf[n*dbc + j]) << 8*j)
+           if logger().VERBOSE:
+              logger().log( "[spi] in FDATA00 = 0x%08x" % dword_value )
+           #self.cs.mem.write_physical_mem_dword( spi_base + PCH_RCBA_SPI_FDATA00, dword_value )
+           #if not self._send_spi_cycle( HSFCTL_WRITE_CYCLE, r-1, spi_fla + n*dbc ):
+           #   write_ok = False
+           #   logger().error( "SPI flash write cycle failed" )
+           
+        return write_ok
+
     def erase_spi_block(self, spi_fla ):
         if logger().UTIL_TRACE or logger().VERBOSE:
            logger().log( "[spi] Erasing SPI Flash block @ 0x%X" % spi_fla )
@@ -733,4 +791,19 @@ class SPI:
         if not erase_ok:
            logger().error( "SPI Flash erase cycle failed" )
 
+        return erase_ok
+
+    def simulate_erase_spi_block(self, spi_fla ):
+        if logger().UTIL_TRACE or logger().VERBOSE:
+           logger().log( "[spi] Erasing SPI Flash block @ 0x%X" % spi_fla )
+
+        cycle_done = self._wait_SPI_flash_cycle_done()
+        if not cycle_done:
+           logger().error( "SPI cycle not ready" )
+           return None
+
+        #erase_ok = self._send_spi_cycle( HSFCTL_ERASE_CYCLE, 0, spi_fla )
+        #if not erase_ok:
+        #   logger().error( "SPI Flash erase cycle failed" )
+        erase_ok = 1
         return erase_ok

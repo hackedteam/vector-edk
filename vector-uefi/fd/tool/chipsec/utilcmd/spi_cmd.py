@@ -103,13 +103,61 @@ def spi(argv):
        #for spi_fla_i in range(0x280000,0x764000,0x1000):
        #from,to,step
        for spi_fla_i in range(int(argv[3],16),int(argv[4],16),int(argv[5],16)):
-           print hex(spi_fla_i)
-           logger().log( "Erasing SPI Flash block at FLA = 0x%X" % spi_fla_i )
+           #print hex(spi_fla_i)
+           #logger().log( "Erasing SPI Flash block at FLA = 0x%X" % spi_fla_i )
            ok = spi.erase_spi_block( spi_fla_i )
-           if ok: logger().log_result( "SPI Flash erase done" )
-           else:  logger().warn( "SPI Flash erase returned error (turn on VERBOSE)" )
-       
-       
+           #if ok: logger().log_result( "SPI Flash erase done" )
+           #else:  logger().warn( "SPI Flash erase returned error (turn on VERBOSE)" )
+    if ( 'simerase' == spi_op ):
+       ##spi_fla = int(argv[3],16)
+       ##logger().log( "[CHIPSEC] Erasing SPI Flash block at FLA = 0x%X" % spi_fla )
+
+       #
+       # This write protection only matters for BIOS range in SPI
+       # Continue if FLA being written is not within BIOS range 
+       # @TODO: do smth smarter here
+       #
+       if not spi.disable_BIOS_write_protection():
+           logger().error( "Could not disable SPI Flash protection. Still trying.." )
+       #  0x763000 = 0x764000 - 0x1000
+       #for spi_fla_i in range(0x280000,0x764000,0x1000):
+       #from,to,step
+       for spi_fla_i in range(int(argv[3],16),int(argv[4],16),int(argv[5],16)):
+           print hex(spi_fla_i)
+           #logger().log( "Erasing SPI Flash block at FLA = 0x%X" % spi_fla_i )
+           ok = spi.simulate_erase_spi_block( spi_fla_i )
+           #if ok: logger().log_result( "SPI Flash erase done" )
+           #else:  logger().warn( "SPI Flash erase returned error (turn on VERBOSE)" )
+    elif ( 'erase' == spi_op ):
+        spi_fla = int(argv[3],16)
+        logger().log( "[CHIPSEC] Erasing SPI Flash block at FLA = 0x%X" % spi_fla )
+
+        #
+        # This write protection only matters for BIOS range in SPI
+        # Continue if FLA being written is not within BIOS range 
+        # @TODO: do smth smarter here
+        #
+        if not spi.disable_BIOS_write_protection():
+           logger().error( "Could not disable SPI Flash protection. Still trying.." )
+
+        ok = spi.erase_spi_block( spi_fla )
+        if ok: logger().log_result( "SPI Flash erase done" )
+        else:  logger().warn( "SPI Flash erase returned error (turn on VERBOSE)" )
+    elif ( 'simwrite' == spi_op and 5 == len(argv) ):
+       spi_fla = int(argv[3],16)
+       filename = argv[4]
+       logger().log( "[CHIPSEC] Writing to SPI Flash at FLA = 0x%X from '%.64s'" % (spi_fla, filename) )
+       #
+       # This write protection only matters for BIOS range in SPI
+       # Continue if FLA being written is not within BIOS range 
+       # @TODO: do smth smarter here
+       #
+       if not spi.disable_BIOS_write_protection():
+          logger().error( "Could not disable SPI Flash protection. Still trying.." )
+
+       ok = spi.simulate_write_spi_from_file( spi_fla, filename )
+       if ok: logger().log_result( "SPI Flash write done" )
+       else:  logger().warn( "SPI Flash write returned error (turn on VERBOSE)" )
     elif ( 'write' == spi_op and 5 == len(argv) ):
        spi_fla = int(argv[3],16)
        filename = argv[4]

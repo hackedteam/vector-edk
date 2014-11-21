@@ -93,15 +93,26 @@ def patch():
   spi_length = len(spi_buffer)
   print "SPI length %x\n"%(spi_length)
 
-  vol = edk2.FvVolumeGet(spi_buffer, spi_length, 0);
-  vol_address = "{:x}".format(edk2.FvVolumeAddress(spi_buffer, spi_length, 0))
-  vol_size = "{:x}".format(edk2.FvVolumeSize(spi_buffer, spi_length, 0))
+  # looking dxe firmwawre
+  vol_handle = edk2.LookupDxeImage(spi_buffer, spi_length)
+  
+  if vol_handle == 0xff000000:
+     print "DXE firmware not found."
+     sys.exit(0)
+
+  vol_index = edk2.VolumeFromHandle(vol_handle)
+  voladdr = edk2.FvVolumeAddress(spi_buffer, spi_length, vol_index)
+  volsize = edk2.FvVolumeSize(spi_buffer, spi_length, vol_index)
+  vol_address = "{:x}".format(voladdr)
+  vol_size = "{:x}".format(voladdr + volsize)
+  
+  vol = edk2.FvVolumeGet(spi_buffer, spi_length, vol_index)
   
   f = open('/tmp/vol.bin', 'wb')
   f.write(vol)
   f.close()
 
-  dxe = edk2.FvOpenVolume(vol, len(vol), 0)
+  dxe = edk2.FvOpenVolume(spi_buffer, spi_length, vol_handle)
 
   print "dxe = %x\n"%(len(dxe))
 
@@ -140,7 +151,7 @@ def patch():
   f.close()
 
   print "Creating update volume"
-  newdxe = edk2.FvCloseVolume(vol, len(vol), dxe, len(dxe), 0)
+  newdxe = edk2.FvCloseVolume(vol, len(vol), dxe, len(dxe), vol_handle)
 
   print "Writing new volume"
 
@@ -159,7 +170,7 @@ def dump():
 
     if os.path.exists('/tmp/vol02.bin'):
        print 'Volume found from address %s:%s'%(vol_address, vol_size)
-       erase_argv = [ 'chipsec_util.py', 'spi', 'flasherase', vol_address, vol_size ]
+       erase_argv = [ 'chipsec_util.py', 'spi', 'flasherase', vol_address, vol_size, '1000']
        print 'Wiping memory....'
        print erase_argv
        chipsec_util_commands['spi']['func'](erase_argv)
@@ -168,6 +179,8 @@ def dump():
        print write_argv
        chipsec_util_commands['spi']['func'](write_argv)
        print 'Flash done. Remove USB key and reboot'
+ 
+   
     else:
        print 'Patched volume not found. Submit /tmp/ folder to support!'
 
