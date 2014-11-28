@@ -30,7 +30,7 @@
 #chipsec_util spi
 #-----
 #~~~
-#chipsec_util spi info|dump|read|write|eraseByGio [flash_address] [length] [file]
+#chipsec_util spi info|dump|read|write|flasherase [flash_address] [length] [file]
 #''
 #    Examples:
 #''
@@ -57,7 +57,7 @@ from chipsec.hal.spi    import *
 
 #_cs = cs()
 
-usage = "chipsec_util spi info|dump|read|write|eraseByGio [flash_address] [length] [file]\n" + \
+usage = "chipsec_util spi info|dump|read|write|flasherase [flash_address] [length] [file]\n" + \
         "Examples:\n" + \
         "  chipsec_util spi info\n" + \
         "  chipsec_util spi dump rom.bin\n" + \
@@ -202,7 +202,7 @@ def spi(argv):
        if (buf is None):
           logger().error( "Dumping SPI Flash didn't return any data (turn on VERBOSE)" )
        else:
-          logger().log_result( "Done dumping SPI Flash" ) 
+          logger().log_result( "Done dumping SPI Flash" )
     else:
        print usage
        return

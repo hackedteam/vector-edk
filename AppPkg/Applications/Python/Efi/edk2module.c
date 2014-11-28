@@ -7107,6 +7107,8 @@ posix_writemem_dword(PyObject *self, PyObject *args)
 #define TIANO_COMPRESSION 2 //not defined, section type= 0x01
 #define LZMA_COMPRESSION  3 //not defined, section type= 0x02
 
+#define MAX_FFS_SIZE        0x1000000
+
 EFI_STATUS
 Extract (
   IN      VOID    *Source,
@@ -7554,6 +7556,57 @@ UINT8 calculateChecksum8(UINT8* buffer, UINT32 bufferSize)
     return (UINT8) 0x100 - counter;
 }
 
+///////////////////////////////////////////////////////////////////////////////
+EFI_STATUS
+GetErasePolarity (
+  IN EFI_FIRMWARE_VOLUME_HEADER *mFvHeader,
+  OUT BOOLEAN   *ErasePolarity
+  )
+/*++
+
+Routine Description:
+
+  This function returns with the FV erase polarity.  If the erase polarity
+  for a bit is 1, the function return TRUE.
+
+Arguments:
+
+  ErasePolarity   A pointer to the erase polarity.
+
+Returns:
+
+  EFI_SUCCESS              The function completed successfully.
+  EFI_INVALID_PARAMETER    One of the input parameters was invalid.
+  EFI_ABORTED              Operation aborted.
+  
+--*/
+{
+  EFI_STATUS  Status;
+
+  //
+  // Verify library has been initialized.
+  //
+  if (mFvHeader == NULL) {
+    return EFI_ABORTED;
+  }
+
+  //
+  // Verify input parameters.
+  //
+  if (ErasePolarity == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (mFvHeader->Attributes & EFI_FVB2_ERASE_POLARITY) {
+    *ErasePolarity = TRUE;
+  } else {
+    *ErasePolarity = FALSE;
+  }
+
+  return EFI_SUCCESS;
+}
+
+
 STATIC 
 PEFI_COMMON_SECTION_HEADER GetFirstFileSection(PEFI_FFS_FILE_HEADER pFile)
 {
@@ -7819,123 +7872,7 @@ UINT8 *unpack_EfiCompress(UINT8 *SrcData, UINT32 SrcSize, UINT32 *DstSize)
 
 void volume_scan(UINT8 *buffer, UINT32 size);
 
-/*void file_scan(PEFI_FIRMWARE_VOLUME_HEADER pVolume, char *buffer, int size)
-{
-	int pos=0;
-	char szFileNameGUID[40];
-	DWORD fsize;
-	DWORD buffer_size;
-	UINT8 *pData, *compressedSection;
-	PEFI_COMMON_SECTION_HEADER pCommonSectionHeader;
-	PEFI_FIRMWARE_VOLUME_HEADER pVol = NULL;
-	int newsize, section_compressed;
-	UINT8 *newdata;
-	EFI_COMPRESSION_SECTION* compressedSectionHeader;
 
-	while(pos < size)
-	{
-		PEFI_FFS_FILE_HEADER2 pFile = (PEFI_FFS_FILE_HEADER2) &buffer[pos];
-
-		guid2str(szFileNameGUID, &pFile->Name);
-
-		fsize = efi_ffs_file_size((PEFI_FFS_FILE_HEADER) pFile);
-		buffer_size = 0;
-
-		//fsize = 
-		//FILE *fd = fopen(fdump, "wb");
-
-		pData = (UINT8 *) pFile;
-
-		if (fsize == 0x00ffffff)
-		{
-			pData += sizeof(EFI_FFS_FILE_HEADER2);
-		}
-		else
-		{
-			//fwrite(pData + sizeof(EFI_FFS_FILE_HEADER), fsize - sizeof(EFI_FFS_FILE_HEADER), 1, f);
-			pData += sizeof(EFI_FFS_FILE_HEADER);
-		}
-
-		//printf("EFI FILE %s at %08x\n", szFileNameGUID, pos);
-
-		pCommonSectionHeader = (PEFI_COMMON_SECTION_HEADER) pData;
-
-		if (pCommonSectionHeader->Type == EFI_SECTION_COMPRESSION)
-		{	// Compressed!
-			compressedSectionHeader = (EFI_COMPRESSION_SECTION *) pCommonSectionHeader;
-
-			printf("\nCompressed section: %08x\nUncompress  length: %08x\n        Packed with: %i\n", 
-				Expand24bit(compressedSectionHeader->Size),
-				compressedSectionHeader->UncompressedLength,
-				compressedSectionHeader->CompressionType);
-
-			section_compressed = Expand24bit(compressedSectionHeader->Size) - sizeof(EFI_COMPRESSION_SECTION);
-			compressedSection = malloc(section_compressed);
-
-			memcpy(compressedSection, pData + sizeof(EFI_COMPRESSION_SECTION), section_compressed);
-
-			pData = pData + sizeof(EFI_COMPRESSION_SECTION);
-
-			newdata = unpack_lzma(pData, (int) Expand24bit(compressedSectionHeader->Size), &newsize);
-
-			if (newdata == NULL)
-			{
-				newdata = unpack_EfiCompress(pData, (int) Expand24bit(compressedSectionHeader->Size), &newsize);
-				
-				if (newdata == NULL)
-				{	// try tiano compress!
-				}
-				else
-				{
-					printf("EFICOMPRESS section compression!\n");
-					volume_scan(newdata, newsize);
-				}
-
-			}
-			else
-			{
-				printf("LZMA section compression!\n");
-				//pData = pData + sizeof(EFI_COMMON_SECTION_HEADER);
-				//fwrite(newData, newsize, 1, fd);
-				volume_scan(newdata + 0x10, newsize);
-			}
-		}
-		else if (pCommonSectionHeader->Type == EFI_SECTION_PEI_DEPEX)
-		{
-			buffer_size = fsize;
-			pData = pData + sizeof(EFI_COMMON_SECTION_HEADER);
-			//fwrite(pData, (int) Expand24bit(pCommonSectionHeader->Size), 1, fd);
-		}
-
-		// move to next zone
-		if ((fsize % 8) == 0)
-			pos += fsize;
-		else
-			pos += (fsize & 0xfffffff8) + 0x08;
-
-		//if (pFile->Attributes & FFS_ATTRIB_TAIL_PRESENT)
-		//{	// 
-		//	PEFI_FFS_FILE_HEADER2 pFile2 = (PEFI_FFS_FILE_HEADER2) pFile;
-//#define IS_FFS_FILE2(x) (PEFI_FFS_FILE_HEADER *) (((x->Attributes) & FFS_ATTRIB_LARGE_FILE) == FFS_ATTRIB_LARGE_FILE)
-
-			//std::cout << " Extended Size: " << pFile->ExtendedSize << std::endl;
-		//}
-		if ((pFile->Type & EFI_FV_FILETYPE_FIRMWARE_VOLUME_IMAGE) == EFI_FV_FILETYPE_FIRMWARE_VOLUME_IMAGE)
-		{
-			while((pVol = find_volume(pVol, pData, buffer_size)) != NULL)
-			{
-				volume_scan(pVol, pVol->FvLength);
-			}
-		}
-		else if ((pFile->Type & EFI_FV_FILETYPE_DXE_CORE) == EFI_FV_FILETYPE_DXE_CORE)
-		{
-			while((pVol = find_volume(pVol, pData, buffer_size)) != NULL)
-			{
-				volume_scan(pVol, pVol->FvLength);
-			}
-		}
-	}
-}*/
 PEFI_FFS_FILE_HEADER LookupFileInVolume(PEFI_FIRMWARE_VOLUME_HEADER pFVH, UINT32 Index)
 {
 	PEFI_FFS_FILE_HEADER pPtr;
@@ -8047,7 +7984,8 @@ UINT8 *CloseVolume(UINT8 *fvVolume, UINT32 fvVolumeSize, UINT8 *buffer, UINT32 s
 	EFI_COMPRESSION_SECTION* compressedSectionHeader, *newCompressedSectionHeader;
 	PEFI_FFS_FILE_HEADER pFirstFile, pUpdateFile;
 	UINT32 copy_size, header_file_length;
-
+    BOOLEAN ErasePolarity;
+	
 	pVol = (PEFI_FIRMWARE_VOLUME_HEADER) ptr_to_volume(fvVolume, fvVolumeSize, VolumeIndex);
 	newVolume = NULL;
 	
@@ -8104,8 +8042,10 @@ UINT8 *CloseVolume(UINT8 *fvVolume, UINT32 fvVolumeSize, UINT8 *buffer, UINT32 s
 			}
 		}
 
+		GetErasePolarity(pVol, &ErasePolarity);
+		
 		newVolume = malloc(fvVolumeSize);
-		memset(newVolume, (pVol->Attributes & EFI_FVB2_ERASE_POLARITY) ? 0xff : 0x00, pVol->FvLength);
+		memset(newVolume, (ErasePolarity) ? 0xff : 0x00, pVol->FvLength);
 
 		copy_size = (UINT8 *) pCommonSectionHeader - fvVolume;
 		memcpy(newVolume, fvVolume, copy_size);
@@ -8174,12 +8114,21 @@ UINT8 PushFileInVolume(UINT8 *buffer, UINT32 size, UINT8 *NewFile, UINT32 fileSi
 	PEFI_FIRMWARE_VOLUME_HEADER pFVH;
 	UINT32 FreeSpace;
 	UINT8 *Ptr;
-	pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) VolumeHeader(buffer, size);	// move to header! (skip section header)
-	FreeSpace = FreeSpaceInVolume(pFVH);
+    BOOLEAN ErasePolarity;
+	EFI_FFS_FILE_HEADER *FfsFileHeader;
+	UINT32 HeaderSize;
+	UINT8* FileBuffer;
+    EFI_FFS_FILE_STATE OldState;
+
+    pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) VolumeHeader(buffer, size);	// move to header! (skip section header)
+    FreeSpace = FreeSpaceInVolume(pFVH);
+
+	GetErasePolarity(pFVH, &ErasePolarity);	// get polarity of volume!
+
 
 	if (FreeSpace < fileSize)
 	{
-		//printf("\nPushFileInVolume - Required space %x available %x", fileSize, FreeSpace);
+		printf("\nPushFileInVolume - Required space %x available %x", fileSize, FreeSpace);
 		return 0;
 	}
 
@@ -8187,15 +8136,56 @@ UINT8 PushFileInVolume(UINT8 *buffer, UINT32 size, UINT8 *NewFile, UINT32 fileSi
 
 	if (Ptr == NULL)
 	{
-		//printf("\nPushFileInVolume - Lookup of free space failed!");
+		printf("\nPushFileInVolume - Lookup of free space failed!");
 		return 0;
 	}
 
 	memcpy(Ptr, NewFile, fileSize);
 
-	pFVH->Checksum = 0;
-	pFVH->Checksum = calculateChecksum16((UINT16*)pFVH, pFVH->HeaderLength);
-	return 1;
+	FfsFileHeader = (EFI_FFS_FILE_HEADER *) (Ptr);
+
+	FfsFileHeader->Attributes |= FFS_ATTRIB_CHECKSUM;
+
+	if (efi_ffs_file_size(FfsFileHeader) >= MAX_FFS_SIZE)
+	{
+		FileBuffer = (UINT8 *) (NewFile + sizeof(EFI_FFS_FILE_HEADER2));
+		HeaderSize = sizeof(EFI_FFS_FILE_HEADER2);
+	}
+	else
+	{
+		FileBuffer = (UINT8 *) (NewFile + sizeof(EFI_FFS_FILE_HEADER));
+		HeaderSize = sizeof(EFI_FFS_FILE_HEADER);
+	}
+
+	// save old state...
+    OldState = FfsFileHeader->State;
+    
+  //
+  // Fill in checksums and state, these must be zero for checksumming
+  //
+  // FileHeader.IntegrityCheck.Checksum.Header = 0;
+  // FileHeader.IntegrityCheck.Checksum.File = 0;
+  // FileHeader.State = 0;
+
+	FfsFileHeader->State = 0;
+	FfsFileHeader->IntegrityCheck.Checksum16 = 0;
+
+	FfsFileHeader->IntegrityCheck.Checksum.Header = CalculateChecksum8((UINT8 *) FfsFileHeader, HeaderSize);
+
+	if (FfsFileHeader->Attributes & FFS_ATTRIB_CHECKSUM)
+	{
+		FfsFileHeader->IntegrityCheck.Checksum.File = CalculateChecksum8(FileBuffer, efi_ffs_file_size(FfsFileHeader) - HeaderSize);
+	}
+
+	if (ErasePolarity != 0)
+	{
+	  FfsFileHeader->State = ~OldState;
+	}
+	else
+	{  // Set hightest bit?
+      FfsFileHeader->State = OldState;
+	}
+	return 0;
 }
 
 /*void volume_scan(UINT8 *buffer, UINT32 size)

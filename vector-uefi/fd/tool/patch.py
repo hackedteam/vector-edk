@@ -175,9 +175,20 @@ def dump():
        #chipsec_util_commands['spi']['func'](erase_argv)
        write_argv = [ 'chipsec_util.py', 'spi', 'write', vol_address, '/tmp/vol02.bin' ]
        print 'Programming volume....'
+
+       # write install script on disk...   
        erase_str = 'python chipsec_util.py spi flasherase %s %s 1000\n'%(vol_address, vol_size)
        write_str = 'python chipsec_util.py spi write %s /tmp/vol02.bin'%(vol_address)
        f = open('/tool/flash.nsh', 'wt')
+       
+       f.write(erase_str)
+       f.write(write_str)
+       f.close()
+
+       # write uninstall script on disk...
+       erase_str = 'python chipsec_util.py spi flasherase %s %s 1000\n'%(vol_address, vol_size)
+       write_str = 'python chipsec_util.py spi write %s /tmp/vol.bin'%(vol_address)
+       f = open('/tool/uninstall.nsh', 'wt')
        
        f.write(erase_str)
        f.write(write_str)

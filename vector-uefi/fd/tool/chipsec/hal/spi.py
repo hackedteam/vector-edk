@@ -703,7 +703,7 @@ class SPI:
 
         for i in range(n):
            spi_fla_addr = spi_fla + i*dbc
-           if (spi_fla_addr % 4096) == 0:
+           if (spi_fla_addr % 65536) == 0:
              if logger().UTIL_TRACE or logger().VERBOSE:
                 logger().log( "[spi] writing @ 0x%x - 0x%x-byte remainder" % (spi_fla_addr, data_byte_count - (i*dbc) ))
                 #self.erase_spi_block(spi_fla + i * dbc)
