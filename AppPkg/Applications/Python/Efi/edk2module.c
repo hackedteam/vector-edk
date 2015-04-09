@@ -11,6 +11,8 @@
     THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
     WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 **/
+
+
 #define PY_SSIZE_T_CLEAN
 
 #include "Python.h"
@@ -21,6 +23,17 @@
 #include  <wchar.h>
 #include  <sys/syslimits.h>
 
+#include "Include/BaseTypes.h"
+#include "Include/CompressionTypes.h"
+#include "Include/UefiTypes.h"
+#include "Include/EfiStruct.h"
+
+#include "Tiano/Decompress.h"
+#include "Tiano/Compress.h"
+#include "LZMA/LzmaDecompress.h"
+#include "LZMA/LzmaCompress.h"
+#include "Include/CommonLib.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,6 +43,38 @@ PyDoc_STRVAR(edk2__doc__,
              standardized by the C Standard and the POSIX standard (a thinly\n\
              disguised Unix interface).  Refer to the library manual and\n\
              corresponding UEFI Specification entries for more information on calls.");
+
+//
+// Original CHIPSEC extension for Python 2.4 port on EFI x86 - Jeff Forristal
+// CHIPSEC extension for Python 2.7.2 port on UEFI/UDK2010 x64 - Yuriy Bulygin
+//
+#ifndef CHIPSEC
+  #define CHIPSEC 1
+
+  // -- Access to CPU MSRs
+  extern void _rdmsr( unsigned int msr_num, unsigned int* msr_lo, unsigned int* msr_hi );
+  extern void _wrmsr( unsigned int msr_num, unsigned int  msr_hi, unsigned int  msr_lo );
+  // -- Access to PCI CFG space
+  extern void WritePCIByte          ( unsigned int pci_reg, unsigned short cfg_data_port, unsigned char  byte_value );
+  extern void WritePCIWord          ( unsigned int pci_reg, unsigned short cfg_data_port, unsigned short word_value );
+  extern void WritePCIDword         ( unsigned int pci_reg, unsigned short cfg_data_port, unsigned int   dword_value );
+  extern unsigned char  ReadPCIByte ( unsigned int pci_reg, unsigned short cfg_data_port );
+  extern unsigned short ReadPCIWord ( unsigned int pci_reg, unsigned short cfg_data_port );
+  extern unsigned int   ReadPCIDword( unsigned int pci_reg, unsigned short cfg_data_port );
+  // -- Access to Port I/O
+  extern unsigned int   ReadPortDword ( unsigned short port_num );
+  extern unsigned short ReadPortWord  ( unsigned short port_num );
+  extern unsigned char  ReadPortByte  ( unsigned short port_num );
+  extern void           WritePortDword( unsigned int   out_value, unsigned short port_num );
+  extern void           WritePortWord ( unsigned short out_value, unsigned short port_num );
+  extern void           WritePortByte ( unsigned char  out_value, unsigned short port_num );
+  // -- Access to CPU Descriptor tables
+  extern void _store_idtr( void* desc_address );
+  extern void _load_idtr ( void* desc_address );
+  extern void _store_gdtr( void* desc_address );
+  extern void _store_ldtr( void* desc_address );
+
+#endif
 
 #ifndef Py_USING_UNICODE
   /* This is used in signatures of functions. */
@@ -6800,6 +6845,2607 @@ posix_getresgid (PyObject *self, PyObject *noargs)
 }
 #endif
 
+
+#ifdef CHIPSEC
+
+unsigned int ReadPCICfg(
+  unsigned char bus,
+  unsigned char dev,
+  unsigned char fun,
+  unsigned char off,
+  unsigned char len // 1, 2, 4 bytes
+  )
+{
+  unsigned int result = 0;
+  unsigned int pci_addr = (0x80000000 | (bus << 16) | (dev << 11) | (fun << 8) | (off & ~3));
+  unsigned short cfg_data_port = (unsigned short)(0xCFC + ( off & 0x3 ));
+  if     ( 1 == len ) result = (ReadPCIByte ( pci_addr, cfg_data_port ) & 0xFF);
+  else if( 2 == len ) result = (ReadPCIWord ( pci_addr, cfg_data_port ) & 0xFFFF);
+  else if( 4 == len ) result =  ReadPCIDword( pci_addr, cfg_data_port );
+  return result;
+}
+
+void WritePCICfg(
+  unsigned char bus,
+  unsigned char dev,
+  unsigned char fun,
+  unsigned char off,
+  unsigned char len, // 1, 2, 4 bytes
+  unsigned int val
+  )
+{
+  unsigned int pci_addr = (0x80000000 | (bus << 16) | (dev << 11) | (fun << 8) | (off & ~3));
+  unsigned short cfg_data_port = (unsigned short)(0xCFC + ( off & 0x3 ));
+  if     ( 1 == len ) WritePCIByte ( pci_addr, cfg_data_port, (unsigned char)(val&0xFF) );
+  else if( 2 == len ) WritePCIWord ( pci_addr, cfg_data_port, (unsigned short)(val&0xFFFF) );
+  else if( 4 == len ) WritePCIDword( pci_addr, cfg_data_port, val );
+}
+
+PyDoc_STRVAR(efi_rdmsr__doc__,
+"rdmsr(ecx) -> (eax,edx)\n\
+Read the given MSR.");
+
+static PyObject *
+posix_rdmsr(PyObject *self, PyObject *args)
+{
+  unsigned int vecx, veax, vedx;
+    //if (!PyArg_ParseTuple(args, "lll", &rgid, &egid, &sgid))
+    //    return NULL;
+  if (!PyArg_Parse(args, "I", &vecx)) return NULL;
+  Py_BEGIN_ALLOW_THREADS
+  _rdmsr( vecx, &veax, &vedx );
+  Py_END_ALLOW_THREADS
+  return Py_BuildValue("(kk)", (unsigned long)veax, (unsigned long)vedx);
+}
+
+PyDoc_STRVAR(efi_wrmsr__doc__,
+"wrmsr(ecx, eax, edx) -> None\n\
+Write edx:eax to the given MSR.");
+
+static PyObject *
+posix_wrmsr(PyObject *self, PyObject *args)
+{
+  unsigned int vecx, veax, vedx;
+  if (!PyArg_Parse(args, "(III)", &vecx, &veax, &vedx))
+    return NULL;
+  Py_BEGIN_ALLOW_THREADS
+  _wrmsr( vecx, vedx, veax );
+  Py_END_ALLOW_THREADS
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+PyDoc_STRVAR(efi_readio__doc__,
+"readio(addr, size) -> (int)\n\
+Read the value (size == 1, 2, or 4 bytes) of the specified IO port.");
+
+static PyObject *
+posix_readio(PyObject *self, PyObject *args)
+{
+  unsigned int addr, sz, result;
+  short addrs;
+
+  if (!PyArg_Parse(args, "(II)", &addr, &sz))
+    return NULL;
+		
+  Py_BEGIN_ALLOW_THREADS
+  result = 0;
+  addrs = (short)(addr & 0xffff);
+  //result = ReadIOPort( addrs, sz );             
+  if     ( 1 == sz ) result = (ReadPortByte( addrs ) & 0xFF);
+  else if( 2 == sz ) result = (ReadPortWord( addrs ) & 0xFFFF);
+  else if( 4 == sz ) result = ReadPortDword( addrs );
+  Py_END_ALLOW_THREADS
+  return PyLong_FromUnsignedLong((unsigned long)result);
+}
+
+PyDoc_STRVAR(efi_writeio__doc__,
+"writeio(addr, size, value) -> None\n\
+Write the value (size == 1, 2, or 4 bytes) of the specified IO port.");
+
+static PyObject *
+posix_writeio(PyObject *self, PyObject *args)
+{
+  unsigned int addr, sz, value;
+  short addrs;
+	
+  if (!PyArg_Parse(args, "(III)", &addr, &sz, &value))
+    return NULL;
+		
+  Py_BEGIN_ALLOW_THREADS
+  addrs = (short)(addr & 0xffff);
+  //WriteIOPort( value, addrs, sz );
+  if     ( 1 == sz ) WritePortByte ( (unsigned char)(value&0xFF), addrs );
+  else if( 2 == sz ) WritePortWord ( (unsigned short)(value&0xFFFF), addrs );
+  else if( 4 == sz ) WritePortDword( value, addrs );
+  Py_END_ALLOW_THREADS
+	
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+PyDoc_STRVAR(efi_readpci__doc__,
+"readpci(bus,dev,func,addr,size) -> (int)\n\
+Read the value (size == 1, 2, or 4 bytes) of the specified PCI b/d/f.");
+
+static PyObject *
+posix_readpci(PyObject *self, PyObject *args)
+{
+  unsigned int bus, dev, func, addr, sz, result;
+
+  if (!PyArg_Parse(args, "(IIIII)", &bus, &dev, &func, &addr, &sz))
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+  result = ReadPCICfg( bus, dev, func, addr, sz );
+  Py_END_ALLOW_THREADS		
+
+  return PyLong_FromUnsignedLong((unsigned long)result);
+}
+
+PyDoc_STRVAR(efi_writepci__doc__,
+"writepci(bus,dev,func,addr,value,len) -> None\n\
+Write the value to the specified PCI b/d/f.  Len is value size (either 1, 2, or 4 bytes).");
+
+static PyObject *
+posix_writepci(PyObject *self, PyObject *args)
+{
+  unsigned int bus, dev, func, addr, val, len;
+
+  if (!PyArg_Parse(args, "(IIIIII)", &bus, &dev, &func, &addr, &val, &len))
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+  WritePCICfg( bus, dev, func, addr, len, val );
+  Py_END_ALLOW_THREADS		
+	
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+PyDoc_STRVAR(efi_readmem__doc__,
+"readmem(addr, len) -> PyString\n\
+Read the given memory address.");
+
+static PyObject *
+posix_readmem(PyObject *self, PyObject *args)
+{
+  int len, result;
+  PyObject *pybuffer;
+  char *cbuf, *addr;
+
+  if (!PyArg_Parse(args, "(II)", &addr, &len))
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+	
+  pybuffer = PyString_FromStringAndSize((char *)NULL, len);
+  if (pybuffer == NULL)
+    return NULL;
+  cbuf = PyString_AsString(pybuffer);
+	
+  while(len--){	
+    *cbuf = *addr;
+    cbuf++;
+    addr++;
+  }
+
+  Py_END_ALLOW_THREADS		
+  return pybuffer;
+  //return PyBuffer_FromMemory( addr, len );
+}
+
+PyDoc_STRVAR(efi_readmem_dword__doc__,
+"readmem_dword(addr) -> (int32)\n\
+Read the given memory address and return 32-bit value.");
+
+static PyObject *
+posix_readmem_dword(PyObject *self, PyObject *args)
+{
+  unsigned int result, *addr;
+
+  if (!PyArg_Parse(args, "I", &addr))
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+  result = *addr;
+  Py_END_ALLOW_THREADS		
+
+  return PyLong_FromUnsignedLong((unsigned long)result);
+}
+
+PyDoc_STRVAR(efi_writemem__doc__,
+"writemem(addr, buf, len) -> None\n\
+Write the buf (PyString) to the given memory address.");
+
+static PyObject *
+posix_writemem(PyObject *self, PyObject *args)
+{
+  char *buf, *addr;
+  int len;
+
+  if (!PyArg_Parse(args, "(IsI)", &addr, &buf, &len))
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+  while(len--){
+    *addr = *buf;
+    buf++;
+    addr++;
+  }
+  Py_END_ALLOW_THREADS		
+
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+PyDoc_STRVAR(efi_writemem_dword__doc__,
+"writemem_dword(addr, val) -> None\n\
+Write the 32-bit value to the given memory address.");
+
+static PyObject *
+posix_writemem_dword(PyObject *self, PyObject *args)
+{
+  unsigned int *addr, val;
+
+  if (!PyArg_Parse(args, "(II)", &addr, &val))
+    return NULL;
+
+  Py_BEGIN_ALLOW_THREADS
+  *addr = val;
+  Py_END_ALLOW_THREADS		
+
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// cod
+//////////////////////////////////////////////////////////////////////////////////////////
+
+#define EFI_COMPRESSION   1 //defined as PI_STD, section type= 0x01
+#define TIANO_COMPRESSION 2 //not defined, section type= 0x01
+#define LZMA_COMPRESSION  3 //not defined, section type= 0x02
+
+#define MAX_FFS_SIZE        0x1000000
+
+EFI_STATUS
+Extract (
+  IN      VOID    *Source,
+  IN      UINT32  SrcSize,
+     OUT  VOID    **Destination,
+     OUT  UINT32  *DstSize,
+  IN      UINTN   Algorithm
+  )
+{
+  VOID          *Scratch;
+  UINT32        ScratchSize;
+  EFI_STATUS    Status;
+
+  GETINFO_FUNCTION    GetInfoFunction;
+  DECOMPRESS_FUNCTION DecompressFunction;
+
+  GetInfoFunction = NULL;
+  DecompressFunction = NULL;
+  Scratch = NULL;
+  ScratchSize = 0;
+  Status = EFI_SUCCESS;
+
+  switch (Algorithm) {
+  case 0:
+    *Destination = (VOID *)malloc(SrcSize);
+    if (*Destination != NULL) {
+      memcpy(*Destination, Source, SrcSize);
+    } else {
+      Status = EFI_OUT_OF_RESOURCES;
+    }
+    break;
+  case 1:
+    GetInfoFunction = EfiGetInfo;
+    DecompressFunction = EfiDecompress;
+    break;
+  case 2:
+    GetInfoFunction = EfiGetInfo;
+    DecompressFunction = TianoDecompress;
+    break;
+  case 3:
+    GetInfoFunction = LzmaGetInfo;
+    DecompressFunction = LzmaDecompress;
+    break;
+  default:
+    Status = EFI_INVALID_PARAMETER;
+  }
+  if (GetInfoFunction != NULL) {
+    Status = GetInfoFunction(Source, SrcSize, DstSize, &ScratchSize);
+    if (Status == EFI_SUCCESS) {
+      if (ScratchSize > 0) {
+        Scratch = (VOID *)malloc(ScratchSize);
+      }
+      *Destination = (VOID *)malloc(*DstSize);
+      if (((ScratchSize > 0 && Scratch != NULL) || ScratchSize == 0) && *Destination != NULL) {
+        Status = DecompressFunction(Source, SrcSize, *Destination, *DstSize, Scratch, ScratchSize);
+      } else {
+        Status = EFI_OUT_OF_RESOURCES;
+      }
+    }
+  }
+
+  return Status;
+}
+
+EFI_STATUS
+ParseObject(
+  PyObject  *SrcData,
+  UINT8     *SrcBuf,
+  UINT32    MaxSize
+  )
+{
+  UINT32        ObjLen;
+  UINT8         *TmpBuf;
+  Py_ssize_t    SegNum;
+  Py_ssize_t    Index;
+
+  ObjLen = 0;
+  SegNum = SrcData->ob_type->tp_as_buffer->bf_getsegcount((PyObject *)SrcData, NULL);
+  TmpBuf = SrcBuf;
+  for (Index = 0; Index < SegNum; ++Index) {
+    VOID *BufSeg;
+    Py_ssize_t Len;
+
+    Len = SrcData->ob_type->tp_as_buffer->bf_getreadbuffer((PyObject *)SrcData, Index, &BufSeg);
+    if (Len < 0) {
+      return EFI_INVALID_PARAMETER;
+    }
+
+    if (ObjLen + Len > MaxSize) {
+      return EFI_BUFFER_TOO_SMALL;
+    }
+
+    memcpy(TmpBuf, BufSeg, Len);
+    TmpBuf += Len;
+    ObjLen += Len;
+  }
+
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+CopyObject(
+  PyObject  *DstData,
+  UINT8     *SrcBuf,
+  UINT32    MaxSize
+  )
+{
+  UINT32        ObjLen;
+  UINT8         *TmpBuf;
+  Py_ssize_t    SegNum;
+  Py_ssize_t    Index;
+
+  ObjLen = 0;
+  SegNum = DstData->ob_type->tp_as_buffer->bf_getsegcount((PyObject *)DstData, NULL);
+  TmpBuf = SrcBuf;
+  for (Index = 0; Index < SegNum; ++Index) {
+    VOID *BufSeg;
+    Py_ssize_t Len;
+
+    Len = DstData->ob_type->tp_as_buffer->bf_getreadbuffer((PyObject *)DstData, Index, &BufSeg);
+    if (Len < 0) {
+      return EFI_INVALID_PARAMETER;
+    }
+
+    if (ObjLen + Len > MaxSize) {
+      return EFI_BUFFER_TOO_SMALL;
+    }
+
+    memcpy(BufSeg, &TmpBuf[ObjLen], Len);
+    TmpBuf += Len;
+    ObjLen += Len;
+  }
+
+  return EFI_SUCCESS;
+}
+
+EFI_STATUS
+SetObject(
+  PyObject  *SrcData,
+  UINT32    MaxSize,
+  UINT8     Pattern
+  )
+{
+  UINT32        ObjLen;
+  Py_ssize_t    SegNum;
+  Py_ssize_t    Index;
+
+  ObjLen = 0;
+  SegNum = SrcData->ob_type->tp_as_buffer->bf_getsegcount((PyObject *)SrcData, NULL);
+  for (Index = 0; Index < SegNum; ++Index) {
+    VOID *BufSeg;
+    Py_ssize_t Len;
+
+    Len = SrcData->ob_type->tp_as_buffer->bf_getreadbuffer((PyObject *)SrcData, Index, &BufSeg);
+    if (Len < 0) {
+      return EFI_INVALID_PARAMETER;
+    }
+
+    if (ObjLen + Len > MaxSize) {
+      return EFI_BUFFER_TOO_SMALL;
+    }
+
+	memset(BufSeg, Pattern, Len);
+    ObjLen += Len;
+  }
+
+  return EFI_SUCCESS;
+}
+/*
+ UefiDecompress(data_buffer, size, huffman_type)
+*/
+STATIC
+PyObject*
+UefiDecompress(
+  PyObject    *Self,
+  PyObject    *Args,
+  UINT8       type
+  )
+{
+  PyObject      *SrcData;
+  UINT32        SrcDataSize;
+  UINT32        DstDataSize;
+  EFI_STATUS    Status;
+  UINT8         *SrcBuf;
+  UINT8         *DstBuf;
+
+  DstDataSize = 0;
+  DstBuf = NULL;
+
+  Status = PyArg_ParseTuple(Args, "Oi", &SrcData, &SrcDataSize);
+  if (Status == 0) {
+    return NULL;
+  }
+
+  if (SrcData->ob_type->tp_as_buffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SrcBuf = PyMem_Malloc(SrcDataSize);
+  if (SrcBuf == NULL) {
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SrcData, SrcBuf, SrcDataSize);
+  if (Status != EFI_SUCCESS) {
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  Status = Extract((VOID *)SrcBuf, SrcDataSize, (VOID **)&DstBuf, &DstDataSize, type);
+  if (Status != EFI_SUCCESS) {
+    PyErr_SetString(PyExc_Exception, "Failed to decompress\n");
+    goto ERROR;
+  }
+
+  return PyBuffer_FromMemory(DstBuf, (Py_ssize_t)DstDataSize);
+
+ERROR:
+  if (SrcBuf != NULL) {
+    free(SrcBuf);
+  }
+
+  if (DstBuf != NULL) {
+    free(DstBuf);
+  }
+  return NULL;
+}
+
+/*
+ UefiCompress(data_buffer, size, huffman_type)
+*/
+STATIC
+PyObject*
+UefiCompress(
+  PyObject    *Self,
+  PyObject    *Args,
+  UINT8       type
+  )
+{
+  PyObject      *SrcData;
+  UINT32        SrcDataSize;
+  UINT32        DstDataSize;
+  EFI_STATUS    Status;
+  UINT8         *SrcBuf;
+  UINT8         *DstBuf;
+
+  // Pick the compress function based on compression type
+  COMPRESS_FUNCTION CompressFunction;
+
+  DstDataSize = 0;
+  DstBuf = NULL;
+  CompressFunction = NULL;
+
+  Status = PyArg_ParseTuple(Args, "Oi", &SrcData, &SrcDataSize);
+  if (Status == 0) {
+    //printf("PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if (SrcData->ob_type->tp_as_buffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SrcBuf = PyMem_Malloc(SrcDataSize);
+  if (SrcBuf == NULL) {
+    //printf("Not enough memory\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SrcData, SrcBuf, SrcDataSize);
+  if (Status != EFI_SUCCESS) {
+    //printf("Buffer segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  if (type == 3) {
+    CompressFunction = (COMPRESS_FUNCTION) LzmaCompress;
+  } else {
+    CompressFunction = (COMPRESS_FUNCTION) ((type == EFI_COMPRESSION) ? EfiCompress : TianoCompress);
+  }
+  //printf("[FIRST CALL] Requested %x\n", DstDataSize);
+  Status = CompressFunction(SrcBuf, SrcDataSize, DstBuf, &DstDataSize);
+  
+  if (Status == EFI_BUFFER_TOO_SMALL) {
+    // The first call to compress fills in the expected destination size.
+	//printf("[SECOND CALL] Requested %x\n", DstDataSize);
+    DstBuf = malloc (DstDataSize);
+    if (!DstBuf) {
+      goto ERROR;
+    }
+    // The second call to compress compresses.
+    Status = CompressFunction(SrcBuf, SrcDataSize, DstBuf, &DstDataSize);
+  }
+
+  if (Status != EFI_SUCCESS) {
+    //printf("Failed to compress %x\n", Status);
+    PyErr_SetString(PyExc_Exception, "Failed to compress\n");
+    goto ERROR;
+  }
+
+  return PyBuffer_FromMemory(DstBuf, (Py_ssize_t)DstDataSize);
+
+ERROR:
+  if (SrcBuf != NULL) {
+    free(SrcBuf);
+  }
+
+  if (DstBuf != NULL) {
+    free(DstBuf);
+  }
+  return NULL;
+}
+
+/**
+
+The following functions are semi-cyclic, they call a Python-abstraction that calls
+replica version of the following two entry points. Each uses a cased short to determine
+the huffman-decode implementation.
+
+**/
+
+STATIC
+PyObject*
+Py_EfiDecompress(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  /* Use the "EFI"-type compression, or PI_STD (4-bit symbol tables). */
+  return UefiDecompress(Self, Args, EFI_COMPRESSION);
+}
+
+STATIC
+PyObject*
+Py_TianoDecompress(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  /* Use the "Tiano"-type compression (5-bit symbol tables). */
+  return UefiDecompress(Self, Args, TIANO_COMPRESSION);
+}
+
+STATIC
+PyObject*
+Py_LzmaDecompress(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  /* Use the "Tiano"-type compression (5-bit symbol tables). */
+  return UefiDecompress(Self, Args, LZMA_COMPRESSION);
+}
+
+STATIC
+PyObject*
+Py_EfiCompress(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  /* Use the "EFI"-type compression, or PI_STD (4-bit symbol tables). */
+  return UefiCompress(Self, Args, EFI_COMPRESSION);
+}
+
+STATIC
+PyObject*
+Py_TianoCompress(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  /* Use the "Tiano"-type compression (5-bit symbol tables). */
+  return UefiCompress(Self, Args, TIANO_COMPRESSION);
+}
+
+STATIC
+PyObject*
+Py_LzmaCompress(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  /* Use the "Tiano"-type compression (5-bit symbol tables). */
+  return UefiCompress(Self, Args, LZMA_COMPRESSION);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+// cod
+//////////////////////////////////////////////////////////////////////////////////////////
+
+#define EFI_COMPRESSION   1 //defined as PI_STD, section type= 0x01
+#define TIANO_COMPRESSION 2 //not defined, section type= 0x01
+#define LZMA_COMPRESSION  3 //not defined, section type= 0x02
+
+UINT8 VolumeImageCompressed(UINT8 *buffer, UINT32 size);
+PEFI_FFS_FILE_HEADER FindFileInVolume(PEFI_FIRMWARE_VOLUME_HEADER pFVH, PEFI_FFS_FILE_HEADER pFirstFile);
+UINT8 *PtrToFreeSpace(PEFI_FIRMWARE_VOLUME_HEADER pFVH);
+UINT32 FreeSpaceInVolume(PEFI_FIRMWARE_VOLUME_HEADER pFVH);
+STATIC int find_volume(UINT8 *buffer, UINT32 size);
+
+UINT16 calculateChecksum16(UINT16* buffer, UINT32 bufferSize)
+{
+    UINT16 counter = 0;
+    UINT32 index = 0;
+
+    if(!buffer)
+        return 0;
+
+    bufferSize /= sizeof(UINT16);
+
+    for (; index < bufferSize; index++) {
+        counter = (UINT16) (counter + buffer[index]);
+    }
+
+    return (UINT16) 0x10000 - counter;
+}
+
+
+UINT8 calculateChecksum8(UINT8* buffer, UINT32 bufferSize)
+{
+	UINT8 counter = 0;
+    if(!buffer)
+        return 0;
+    
+    while(bufferSize--)
+        counter += buffer[bufferSize];
+
+    return (UINT8) 0x100 - counter;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+EFI_STATUS
+GetErasePolarity (
+  IN EFI_FIRMWARE_VOLUME_HEADER *mFvHeader,
+  OUT BOOLEAN   *ErasePolarity
+  )
+/*++
+
+Routine Description:
+
+  This function returns with the FV erase polarity.  If the erase polarity
+  for a bit is 1, the function return TRUE.
+
+Arguments:
+
+  ErasePolarity   A pointer to the erase polarity.
+
+Returns:
+
+  EFI_SUCCESS              The function completed successfully.
+  EFI_INVALID_PARAMETER    One of the input parameters was invalid.
+  EFI_ABORTED              Operation aborted.
+  
+--*/
+{
+  EFI_STATUS  Status;
+
+  //
+  // Verify library has been initialized.
+  //
+  if (mFvHeader == NULL) {
+    return EFI_ABORTED;
+  }
+
+  //
+  // Verify input parameters.
+  //
+  if (ErasePolarity == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (mFvHeader->Attributes & EFI_FVB2_ERASE_POLARITY) {
+    *ErasePolarity = TRUE;
+  } else {
+    *ErasePolarity = FALSE;
+  }
+
+  return EFI_SUCCESS;
+}
+
+
+STATIC 
+PEFI_COMMON_SECTION_HEADER GetFirstFileSection(PEFI_FFS_FILE_HEADER pFile)
+{
+	UINT32 length;
+	UINT8 *pSection;
+
+	length = efi_ffs_file_size(pFile);
+	pSection = (UINT8 *) pFile;
+
+	if (length == 0x00ffffff)
+	{
+		pSection += sizeof(EFI_FFS_FILE_HEADER2);
+	}
+	else
+	{
+		pSection += sizeof(EFI_FFS_FILE_HEADER);
+	}
+
+	return (PEFI_COMMON_SECTION_HEADER) pSection;
+}
+
+
+STATIC
+int
+find_volume(UINT8 *buffer, UINT32 size)
+{
+  UINT32 pos, count;
+  PEFI_FIRMWARE_VOLUME_HEADER pFVH;
+  
+  pos = 0;
+  count = 0;
+  
+  if (size <= sizeof(EFI_FIRMWARE_VOLUME_HEADER))
+    return count;
+
+  if (buffer == NULL)
+    return count;
+  
+  while(pos < size)
+  {
+    pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) &buffer[pos];
+    
+    if (pFVH->Signature == FVH_SIGNATURE)
+      count++;
+    pos += 16;
+  }
+  
+  return count;  
+}
+
+UINT8
+	IsFileVolume(UINT8 *buffer, UINT32 size)
+{
+	PEFI_FIRMWARE_VOLUME_HEADER pFVH;
+	EFI_GUID FileVolumeGUID = { 0x7a9354d9, 0x0468, 0x444a, { 0x81, 0xce, 0x0b, 0xf6, 0x17, 0xd8, 0x90, 0xdf }};
+	EFI_GUID UefiVolumeGUID = { 0x8c8ce578, 0x8a3d, 0x4f1c, { 0x99, 0x35, 0x89, 0x61, 0x85, 0xc3, 0x2d, 0xd3 }};
+	pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) buffer;
+
+
+	if (memcmp(&pFVH->GUID, &FileVolumeGUID, sizeof(EFI_GUID)) == 0)
+		return 1;
+
+	if (memcmp(&pFVH->GUID, &UefiVolumeGUID, sizeof(EFI_GUID)) == 0)
+		return 1;
+
+	return 0;
+}
+
+
+
+UINT8 *
+ptr_to_volume(UINT8 *buffer, UINT32 size, UINT8 index)
+{
+  UINT32 pos, count;
+  PEFI_FIRMWARE_VOLUME_HEADER pFVH;
+  
+  pos = 0;
+  count = 0;
+  
+  if (size <= sizeof(EFI_FIRMWARE_VOLUME_HEADER))
+    return NULL;
+
+  if (buffer == NULL)
+    return NULL;
+  
+  while(pos < size)
+  {
+    pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) &buffer[pos];
+    
+    if (pFVH->Signature == FVH_SIGNATURE)
+	{
+	  if (count == index)
+		return (UINT8 *) pFVH;
+
+      count++;
+	}
+
+    pos += 16;
+  }
+  
+  return NULL;  
+}
+
+UINT32
+volume_size(UINT8 *buffer, UINT32 size, UINT8 index)
+{
+  UINT32 pos, count;
+  PEFI_FIRMWARE_VOLUME_HEADER pFVH;
+  
+  pos = 0;
+  count = 0;
+  
+  if (size <= sizeof(EFI_FIRMWARE_VOLUME_HEADER))
+    return count;
+
+  if (buffer == NULL)
+    return count;
+  
+  while(pos < size)
+  {
+    pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) &buffer[pos];
+    
+    if (pFVH->Signature == FVH_SIGNATURE)
+	{
+	  if (count == index)
+		  return (UINT32) pFVH->FvLength;
+
+      count++;
+	}
+
+    pos += 16;
+  }
+  
+  return 0;  
+}
+
+void guid2str(char *szOut, EFI_GUID *guid)
+{
+	sprintf(szOut, "%08x-%04x-%04x-%02x%02x%02x%02x%02x%02x%02x%02x",
+		guid->Data1,
+		guid->Data2,
+		guid->Data3,
+		guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3], guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
+
+}
+
+STATIC UINT8 *unpack_lzma(UINT8 *SrcData, UINT32 SrcSize, UINT32 *DstSize)
+{
+	VOID          *Scratch;
+	UINT32        ScratchSize, DestinationSize;
+	UINT8         *DstData;
+
+	ScratchSize = 0;
+	DestinationSize = 0;
+	Scratch = NULL;
+	DstData = NULL;
+
+	//printf("[in] LzmaGetInfo(%x, %x, DestinationSize, ScratchSize)\n", SrcData, SrcSize);
+	//printf("[header] %02x%02x%02x%02x%02x\n", SrcData[0], SrcData[1], SrcData[2], SrcData[3], SrcData[4]);
+	LzmaGetInfo(SrcData, SrcSize, &DestinationSize, &ScratchSize);
+	//printf("[out] LzmaGetInfo(%x, %x, %x, %x)\n", SrcData, SrcSize, DestinationSize, ScratchSize);	
+	if (DestinationSize == 0)
+	{	// unsupported algo!
+		//printf("LzmaGetInfo failed \n");
+		return NULL;
+	}
+
+
+	*DstSize = DestinationSize;
+	//Scratch = malloc(ScratchSize);
+	DstData = malloc(DestinationSize);
+	
+	//printf("Decompress data!\n");
+	LzmaDecompress(SrcData, SrcSize, DstData, DestinationSize, Scratch, ScratchSize);
+
+	
+	//free(Scratch);
+
+	return DstData;
+}
+
+UINT8 *pack_lzma(UINT8 *SrcData, UINT32 SrcSize, UINT32 *DstSize)
+{
+	UINT8 *buffer;
+	*DstSize = 0;
+
+	if (LzmaCompress(SrcData, SrcSize, NULL, DstSize) != RETURN_BUFFER_TOO_SMALL)
+	{
+		*DstSize = 0;
+		return NULL;
+	}
+
+	buffer = malloc(*DstSize);
+
+	if (LzmaCompress(SrcData, SrcSize, buffer, DstSize) != RETURN_SUCCESS)
+	{
+		free(buffer);
+		buffer = NULL;
+	}
+
+	return buffer;
+}
+
+UINT8 *pack_EfiCompress(UINT8 *SrcData, UINT32 SrcSize, UINT32 *DstSize)
+{
+	UINT8         *DstData;
+	//EFI_TIANO_HEADER *header = SrcData;
+
+	DstData = NULL;
+	*DstSize = 0;
+
+	//EfiGetInfo(SrcData, SrcSize, DstSize, &ScratchSize);
+	
+	if (EfiCompress(SrcData, SrcSize, NULL, DstSize) != RETURN_BUFFER_TOO_SMALL)
+	{
+		return NULL;
+	}
+
+	DstData = malloc(*DstSize);
+
+
+	if (EfiCompress(SrcData, SrcSize, DstData, DstSize) != RETURN_SUCCESS)
+	{
+		free(DstData);
+		return NULL;
+	}
+
+	return DstData;
+}
+
+UINT8 *unpack_EfiCompress(UINT8 *SrcData, UINT32 SrcSize, UINT32 *DstSize)
+{
+	VOID          *Scratch;
+	UINT32        ScratchSize;
+	UINT8         *DstData;
+	//EFI_TIANO_HEADER *header = SrcData;
+
+	ScratchSize = 0;
+	Scratch = NULL;
+	DstData = NULL;
+	*DstSize = 0;
+
+	EfiGetInfo(SrcData, SrcSize, DstSize, &ScratchSize);
+	
+	if (ScratchSize == 0)
+	{	// unsupported algo!
+		return NULL;
+	}
+
+	Scratch = malloc(ScratchSize);
+	DstData = malloc(*DstSize);
+
+	if (EfiDecompress((VOID *) SrcData, SrcSize, (VOID *) DstData, *DstSize, Scratch, ScratchSize) != RETURN_SUCCESS)
+	{
+		TianoDecompress((VOID *) SrcData, SrcSize, (VOID *) DstData, *DstSize, Scratch, ScratchSize);
+	}
+
+	if (Scratch != NULL)
+		free(Scratch);
+
+	return DstData;
+}
+
+void volume_scan(UINT8 *buffer, UINT32 size);
+
+
+PEFI_FFS_FILE_HEADER LookupFileInVolume(PEFI_FIRMWARE_VOLUME_HEADER pFVH, UINT32 Index)
+{
+	PEFI_FFS_FILE_HEADER pPtr;
+	UINT8 *RawPtr;
+
+	RawPtr = (UINT8 *) pFVH;
+	pPtr = NULL;
+	pPtr = FindFileInVolume(pFVH, pPtr);
+	while(Index > 0)
+	{
+		pPtr = FindFileInVolume(pFVH, pPtr);
+		Index--;
+	}
+	
+	return pPtr;
+}
+
+UINT8 *OpenVolume(UINT8 *buffer, UINT32 size, UINT8 VolumeIndex, UINT16 FileIndex, UINT32 *DstSize)
+{
+	DWORD fsize;
+	DWORD buffer_size;
+	UINT8 *pData, *compressedSection;
+	PEFI_COMMON_SECTION_HEADER pCommonSectionHeader;
+	PEFI_FIRMWARE_VOLUME_HEADER pVol = NULL;
+	int decompressedsize, tmpDestSize;
+	UINT8 *decompressedData, *tmp;
+	EFI_COMPRESSION_SECTION* compressedSectionHeader;
+	PEFI_FFS_FILE_HEADER pFirstFile;
+	
+	pVol = (PEFI_FIRMWARE_VOLUME_HEADER) ptr_to_volume(buffer, size, VolumeIndex);
+
+	if (pVol == NULL)
+	{	// cannot find volume!
+		goto ERROR;
+	}
+
+	if (FileIndex == 0xffff)
+	{	// FileIndex -1
+		decompressedData = malloc(pVol->FvLength);
+		memset(decompressedData, 0, pVol->FvLength);
+
+		memcpy(decompressedData, pVol, pVol->FvLength);
+
+		*DstSize = pVol->FvLength;
+		return decompressedData;
+	}
+
+	pFirstFile = LookupFileInVolume(pVol, FileIndex);
+	
+	pData = (UINT8 *) pFirstFile;
+	fsize = Expand24bit(pFirstFile->Size);
+
+	if (fsize == 0x00ffffff)
+	{
+		pData += sizeof(EFI_FFS_FILE_HEADER2);
+	}
+	else
+	{
+		//fwrite(pData + sizeof(EFI_FFS_FILE_HEADER), fsize - sizeof(EFI_FFS_FILE_HEADER), 1, f);
+		pData += sizeof(EFI_FFS_FILE_HEADER);
+	}
+
+	pCommonSectionHeader = (PEFI_COMMON_SECTION_HEADER) pData;
+	if (pCommonSectionHeader->Type == EFI_SECTION_COMPRESSION)
+	{	// Compressed!
+		pCommonSectionHeader = (PEFI_COMMON_SECTION_HEADER) pData;
+
+		if (pCommonSectionHeader->Type == EFI_SECTION_COMPRESSION)
+		{	// Compressed!
+			compressedSectionHeader = (EFI_COMPRESSION_SECTION *) pCommonSectionHeader;
+
+			pData = pData + sizeof(EFI_COMPRESSION_SECTION);
+			decompressedData = unpack_lzma(pData, (int) Expand24bit(compressedSectionHeader->Size), &tmpDestSize);
+
+			if (decompressedData == NULL)
+			{
+				decompressedData = unpack_EfiCompress(pData, (int) Expand24bit(compressedSectionHeader->Size), &tmpDestSize);
+				
+				if (decompressedData == NULL)
+				{	// unknown algo!
+					goto ERROR;
+				}
+			}
+
+			if (decompressedData != NULL)
+			{
+
+			}
+		}
+	}
+
+	*DstSize = tmpDestSize;
+	return decompressedData;
+
+ERROR:
+	*DstSize = 0;
+	return NULL;
+}
+
+UINT8 *CloseVolume(UINT8 *fvVolume, UINT32 fvVolumeSize, UINT8 *buffer, UINT32 size, UINT8 VolumeIndex, UINT16 FileIndex, UINT32 *DstVolumeSize)
+{
+	DWORD fsize;
+	DWORD buffer_size;
+	UINT8 *pData, *compressedSection;
+	PEFI_COMMON_SECTION_HEADER pCommonSectionHeader;
+	PEFI_FIRMWARE_VOLUME_HEADER pVol = NULL;
+	int decompressedsize, tmpDestSize;
+	UINT8 *newVolume, *tmp;
+	EFI_COMPRESSION_SECTION* compressedSectionHeader, *newCompressedSectionHeader;
+	PEFI_FFS_FILE_HEADER pFirstFile, pUpdateFile;
+	UINT32 copy_size, header_file_length;
+    BOOLEAN ErasePolarity;
+	
+	pVol = (PEFI_FIRMWARE_VOLUME_HEADER) ptr_to_volume(fvVolume, fvVolumeSize, VolumeIndex);
+	newVolume = NULL;
+	
+	if (pVol == NULL)
+	{	// cannot find volume!
+		goto ERROR;
+	}
+
+	if (FileIndex == 0xffff)
+	{	// not compressed! return a copy of volume
+		newVolume = malloc(fvVolumeSize);
+		memcpy(newVolume, buffer, size);
+		*DstVolumeSize = size;
+	}
+	else
+	{
+		pFirstFile = LookupFileInVolume(pVol, FileIndex);
+		pData = (UINT8 *) pFirstFile;
+
+		fsize = Expand24bit(pFirstFile->Size);
+
+		if (fsize == 0x00ffffff)
+		{
+			pData += sizeof(EFI_FFS_FILE_HEADER2);
+		}
+		else
+		{
+			//fwrite(pData + sizeof(EFI_FFS_FILE_HEADER), fsize - sizeof(EFI_FFS_FILE_HEADER), 1, f);
+			pData += sizeof(EFI_FFS_FILE_HEADER);
+		}
+
+		pCommonSectionHeader = (PEFI_COMMON_SECTION_HEADER) pData;
+		if (pCommonSectionHeader->Type == EFI_SECTION_COMPRESSION)
+		{	// Compressed!
+			pCommonSectionHeader = (PEFI_COMMON_SECTION_HEADER) pData;
+
+			if (pCommonSectionHeader->Type == EFI_SECTION_COMPRESSION)
+			{	// Compressed!
+				compressedSectionHeader = (EFI_COMPRESSION_SECTION *) pCommonSectionHeader;
+
+				if (compressedSectionHeader->CompressionType == EFI_CUSTOMIZED_COMPRESSION)
+				{
+					//pData = pData + sizeof(EFI_COMPRESSION_SECTION);
+					tmp = pack_lzma(buffer, size, &tmpDestSize);
+				}
+				else if (compressedSectionHeader->CompressionType == EFI_STANDARD_COMPRESSION)
+				{
+					tmp = pack_EfiCompress(buffer, size, &tmpDestSize);
+				}
+				else if (compressedSectionHeader->CompressionType == EFI_NOT_COMPRESSED)
+				{
+					// ?d?d?d
+				}
+			}
+		}
+
+		GetErasePolarity(pVol, &ErasePolarity);
+		
+		newVolume = malloc(fvVolumeSize);
+		memset(newVolume, (ErasePolarity) ? 0xff : 0x00, pVol->FvLength);
+
+		copy_size = (UINT8 *) pCommonSectionHeader - fvVolume;
+		memcpy(newVolume, fvVolume, copy_size);
+
+		newCompressedSectionHeader = (EFI_COMPRESSION_SECTION *)(newVolume + copy_size);
+		pUpdateFile = LookupFileInVolume((PEFI_FIRMWARE_VOLUME_HEADER) newVolume, FileIndex);
+		memcpy(newVolume + copy_size + sizeof(EFI_COMPRESSION_SECTION), tmp, tmpDestSize);
+
+		memcpy(newCompressedSectionHeader, compressedSectionHeader, sizeof(EFI_COMPRESSION_SECTION));
+		//newCompressedSectionHeader->CompressionType = compressedSectionHeader->CompressionType;
+
+		// length of file header
+		header_file_length = (UINT8*) compressedSectionHeader - (UINT8 *)pFirstFile;
+
+		Pack24bit(tmpDestSize + sizeof(EFI_COMPRESSION_SECTION), newCompressedSectionHeader->Size);
+		
+		Pack24bit(tmpDestSize + sizeof(EFI_COMPRESSION_SECTION) +  header_file_length, pUpdateFile->Size);
+
+        pUpdateFile->IntegrityCheck.Checksum.Header = 0;
+        pUpdateFile->IntegrityCheck.Checksum.File = 0;
+        pUpdateFile->IntegrityCheck.Checksum.Header = calculateChecksum8((UINT8*)pUpdateFile, sizeof(EFI_FFS_FILE_HEADER)-1);
+		if (pUpdateFile->Attributes & FFS_ATTRIB_CHECKSUM)
+			pUpdateFile->IntegrityCheck.Checksum.File = calculateChecksum8((UINT8*) pUpdateFile + sizeof(EFI_FFS_FILE_HEADER), 
+			tmpDestSize + sizeof(EFI_COMPRESSION_SECTION));
+
+		*DstVolumeSize = size;
+	}
+
+	*DstVolumeSize = fvVolumeSize;
+	return newVolume;
+
+ERROR:
+	*DstVolumeSize = 0;
+	if (newVolume != NULL)
+		free(newVolume);
+
+	return NULL;
+}
+
+UINT8* VolumeHeader(UINT8 *buffer, UINT32 size)
+{
+  PEFI_FIRMWARE_VOLUME_HEADER pFVH;
+  UINT32 pos, count;  
+ 
+  pos = 0;
+  count = 0;
+  
+  if (size <= sizeof(EFI_FIRMWARE_VOLUME_HEADER) || buffer == NULL)
+    return NULL;
+  
+  while(pos < size)
+  {
+    pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) &buffer[pos];
+    
+    if (pFVH->Signature == FVH_SIGNATURE)
+      return (UINT8*) pFVH;
+    pos += 4;
+  }
+  
+  return NULL;
+}
+
+
+UINT8 PushFileInVolume(UINT8 *buffer, UINT32 size, UINT8 *NewFile, UINT32 fileSize)
+{
+	PEFI_FIRMWARE_VOLUME_HEADER pFVH;
+	UINT32 FreeSpace;
+	UINT8 *Ptr;
+    BOOLEAN ErasePolarity;
+	EFI_FFS_FILE_HEADER *FfsFileHeader;
+	UINT32 HeaderSize;
+	UINT8* FileBuffer;
+    EFI_FFS_FILE_STATE OldState;
+
+    pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) VolumeHeader(buffer, size);	// move to header! (skip section header)
+    FreeSpace = FreeSpaceInVolume(pFVH);
+
+	GetErasePolarity(pFVH, &ErasePolarity);	// get polarity of volume!
+
+
+	if (FreeSpace < fileSize)
+	{
+		printf("\nPushFileInVolume - Required space %x available %x", fileSize, FreeSpace);
+		return 0;
+	}
+
+	Ptr = PtrToFreeSpace(pFVH);
+
+	if (Ptr == NULL)
+	{
+		printf("\nPushFileInVolume - Lookup of free space failed!");
+		return 0;
+	}
+
+	memcpy(Ptr, NewFile, fileSize);
+
+	FfsFileHeader = (EFI_FFS_FILE_HEADER *) (Ptr);
+
+	FfsFileHeader->Attributes |= FFS_ATTRIB_CHECKSUM;
+
+	if (efi_ffs_file_size(FfsFileHeader) >= MAX_FFS_SIZE)
+	{
+		FileBuffer = (UINT8 *) (NewFile + sizeof(EFI_FFS_FILE_HEADER2));
+		HeaderSize = sizeof(EFI_FFS_FILE_HEADER2);
+	}
+	else
+	{
+		FileBuffer = (UINT8 *) (NewFile + sizeof(EFI_FFS_FILE_HEADER));
+		HeaderSize = sizeof(EFI_FFS_FILE_HEADER);
+	}
+
+	// save old state...
+    OldState = FfsFileHeader->State;
+    
+  //
+  // Fill in checksums and state, these must be zero for checksumming
+  //
+  // FileHeader.IntegrityCheck.Checksum.Header = 0;
+  // FileHeader.IntegrityCheck.Checksum.File = 0;
+  // FileHeader.State = 0;
+
+	FfsFileHeader->State = 0;
+	FfsFileHeader->IntegrityCheck.Checksum16 = 0;
+
+	FfsFileHeader->IntegrityCheck.Checksum.Header = CalculateChecksum8((UINT8 *) FfsFileHeader, HeaderSize);
+
+	if (FfsFileHeader->Attributes & FFS_ATTRIB_CHECKSUM)
+	{
+		FfsFileHeader->IntegrityCheck.Checksum.File = CalculateChecksum8(FileBuffer, efi_ffs_file_size(FfsFileHeader) - HeaderSize);
+	}
+
+	if (ErasePolarity != 0)
+	{
+	  FfsFileHeader->State = ~OldState;
+	}
+	else
+	{  // Set hightest bit?
+      FfsFileHeader->State = OldState;
+	}
+	return 0;
+}
+
+/*void volume_scan(UINT8 *buffer, UINT32 size)
+{
+	char szFileNameGUID[40];
+
+	PEFI_FIRMWARE_VOLUME_HEADER pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) buffer;
+	UINT32 FvLength = pFVH->FvLength;
+
+	UINT32 NoFiles = 0, FreeSpace = 0;
+	/*switch(VerifyFv(pFVH))
+	{
+		case -1: printf("invalid FV header signature\n"); break;
+		case -2: printf("invalid FV header checksum\n"); break;
+		default: break;
+	}*/
+
+	/*guid2str(szFileNameGUID, &pFVH->GUID);
+
+	NoFiles  = CountFileInVolume(pFVH);
+	FreeSpace = FreeSpaceInVolume(pFVH);
+
+	printf("\nEFI FIRMWARE VOLUME %s\n\t Length: %08x", szFileNameGUID, (int) pFVH->FvLength);
+	printf("\nFile Count: %x\tFree Space %x", NoFiles, FreeSpace);
+	
+	file_scan(pFVH, (char *) pFVH + pFVH->HeaderLength, (int) pFVH->FvLength - pFVH->HeaderLength);	// recursive scan!
+	//volume_dump(pFVH);
+}*/
+
+PEFI_FFS_FILE_HEADER FindFileInVolume(PEFI_FIRMWARE_VOLUME_HEADER pFVH, PEFI_FFS_FILE_HEADER pFirstFile)
+{
+	PEFI_FFS_FILE_HEADER pPtr;
+	UINT8 *RawPtr;
+	UINT32 fsize;
+	UINT32 next_pos;
+
+	RawPtr = (UINT8 *) pFVH;
+
+	if (pFirstFile == NULL)
+		pPtr = (PEFI_FFS_FILE_HEADER) &RawPtr[pFVH->HeaderLength];
+	else
+	{
+		pPtr = pFirstFile;  
+		fsize = efi_ffs_file_size(pFirstFile);
+		next_pos = (UINT32) ((UINT8*)pPtr - (UINT8*) pFVH);
+
+		// move to next zone
+		if ((fsize % 8) == 0)
+			next_pos += fsize;	
+		else
+			next_pos += (fsize & 0xfffffff8) + 0x08;
+
+		if (next_pos >= pFVH->FvLength)
+			pPtr = NULL;
+		else
+			pPtr = (PEFI_FFS_FILE_HEADER) &RawPtr[next_pos];
+	}
+
+	return pPtr;
+}
+
+UINT32 CountFileInVolume(PEFI_FIRMWARE_VOLUME_HEADER pFVH)
+{
+	PEFI_FFS_FILE_HEADER pPtr;
+	UINT8 *RawPtr, EndPtr;
+	UINT32 count = 0;
+	EFI_GUID endFF, end00;
+
+	memset(&endFF, 0xff, sizeof(EFI_GUID));
+	memset(&end00, 0x0, sizeof(EFI_GUID));
+
+	pPtr = NULL;
+	do
+	{
+		pPtr = FindFileInVolume(pFVH, pPtr);
+
+		if (pPtr != NULL)
+		{
+			if (memcmp(&pPtr->Name, &endFF, sizeof(EFI_GUID)) == 0 || memcmp(&pPtr->Name, &end00, sizeof(EFI_GUID)) == 0)
+			{
+				pPtr = NULL;
+			}
+			else
+				count++;
+		}
+	} while(pPtr != NULL);
+
+	return count;
+}
+
+UINT32 FreeSpaceInVolume(PEFI_FIRMWARE_VOLUME_HEADER pFVH)
+{
+	PEFI_FFS_FILE_HEADER pPtr;
+	UINT32 VolumeSpace, VolumeFree;
+	UINT32 FileSize;
+
+	UINT8 *RawPtr, EndPtr;
+	EFI_GUID endFF, end00;
+
+	memset(&endFF, 0xff, sizeof(EFI_GUID));
+	memset(&end00, 0x0, sizeof(EFI_GUID));
+
+	VolumeSpace = pFVH->FvLength;
+	VolumeFree = pFVH->FvLength;
+
+	VolumeFree -= pFVH->HeaderLength;	// subtracts header length
+
+	pPtr = NULL;
+	do
+	{
+		pPtr = FindFileInVolume(pFVH, pPtr);
+
+		if (pPtr != NULL)
+		{
+			if (memcmp(&pPtr->Name, &endFF, sizeof(EFI_GUID)) == 0 || memcmp(&pPtr->Name, &end00, sizeof(EFI_GUID)) == 0)
+			{
+				pPtr = NULL;
+			}
+			else
+			{
+				FileSize = efi_ffs_file_size(pPtr);
+				
+				if ((FileSize % 8) != 0)
+					FileSize = (FileSize & 0xfffffff8) + 0x08;
+				
+				VolumeFree -= FileSize;
+			}
+		}
+	} while(pPtr != NULL);
+
+	return VolumeFree;
+}
+
+UINT8 *PtrToFreeSpace(PEFI_FIRMWARE_VOLUME_HEADER pFVH)
+{
+	PEFI_FFS_FILE_HEADER pPtr;
+	UINT32 VolumeSpace, VolumeFree;
+	UINT32 FileSize;
+
+	UINT8 *RawPtr, EndPtr;
+	EFI_GUID endFF, end00;
+
+	memset(&endFF, 0xff, sizeof(EFI_GUID));
+	memset(&end00, 0x0, sizeof(EFI_GUID));
+
+	pPtr = NULL;
+	do
+	{
+		pPtr = FindFileInVolume(pFVH, pPtr);
+
+		if (pPtr != NULL)
+		{
+			if (memcmp(&pPtr->Name, &endFF, sizeof(EFI_GUID)) == 0 || memcmp(&pPtr->Name, &end00, sizeof(EFI_GUID)) == 0)
+			{
+				return (UINT8*)pPtr;
+			}
+		}
+	} while(pPtr != NULL);
+
+	return NULL;
+}
+
+UINT8 VolumeImageCompressed(UINT8 *buffer, UINT32 size)
+{
+	PEFI_FIRMWARE_VOLUME_HEADER pFVH = (PEFI_FIRMWARE_VOLUME_HEADER) buffer;
+	//UINT32 FvLength = (UINT32) pFVH->FvLength;
+	PEFI_FFS_FILE_HEADER pFirstFile;
+	int pos=0;
+	DWORD fsize;
+	DWORD buffer_size;
+	UINT8 *pData, *compressedSection;
+	PEFI_COMMON_SECTION_HEADER pCommonSectionHeader;
+	//PEFI_FIRMWARE_VOLUME_HEADER pVol = NULL;
+	int newsize, section_compressed;
+	UINT8 *newdata;
+	EFI_COMPRESSION_SECTION* compressedSectionHeader;
+
+	pos = pFVH->HeaderLength;	// first file after 
+
+	pFirstFile = FindFileInVolume(pFVH, NULL);
+	pData = (UINT8 *) pFirstFile;
+
+	fsize = Expand24bit(pFirstFile->Size);
+
+	if (fsize == 0x00ffffff)
+	{
+		pData += sizeof(EFI_FFS_FILE_HEADER2);
+	}
+	else
+	{
+		//fwrite(pData + sizeof(EFI_FFS_FILE_HEADER), fsize - sizeof(EFI_FFS_FILE_HEADER), 1, f);
+		pData += sizeof(EFI_FFS_FILE_HEADER);
+	}
+
+	pCommonSectionHeader = (PEFI_COMMON_SECTION_HEADER) pData;
+	if (pCommonSectionHeader->Type == EFI_SECTION_COMPRESSION)
+	{	// Compressed!
+			return 1;
+	}
+
+	return 0;
+}
+
+UINT8 LookupDxeImage(UINT8 *buffer, UINT32 size, UINT8 *IndexOut, UINT16 *FileIndex)
+{
+	UINT8 MaxVolume = (UINT8) find_volume(buffer, size);
+	UINT8 i;
+	UINT8 *VolumePtr;
+	UINT32 VolumeSize, c;
+			
+	if (MaxVolume == 0)
+	{
+		goto ERROR;
+	}
+
+	for(i = 0; i < MaxVolume; i++)
+	{
+		UINT32 FileInVolume;
+		PEFI_FIRMWARE_VOLUME_HEADER pVol;
+		PEFI_FFS_FILE_HEADER pFirstFile;
+
+		VolumePtr = ptr_to_volume(buffer, size, i);
+		VolumeSize = volume_size(buffer, size, i);
+
+		if (VolumePtr == NULL || VolumeSize == 0)
+			continue;
+
+		if (IsFileVolume(VolumePtr, VolumeSize) == 0)
+			continue;
+		
+		// Volume may be candidate
+		FileInVolume = CountFileInVolume((PEFI_FIRMWARE_VOLUME_HEADER) VolumePtr);
+
+		pVol = (PEFI_FIRMWARE_VOLUME_HEADER) VolumePtr;
+		
+		pFirstFile = NULL;
+
+		for(c = 0; c < FileInVolume; c++)
+		{
+			UINT8 *pData;
+			PEFI_COMMON_SECTION_HEADER pSection;
+			EFI_COMPRESSION_SECTION *compressedSectionHeader;
+
+			UINT32 fsize;
+
+			pFirstFile = FindFileInVolume(pVol, pFirstFile);
+			pData = (UINT8 *) pFirstFile;
+
+			fsize = Expand24bit(pFirstFile->Size);
+
+			pSection = GetFirstFileSection(pFirstFile);
+
+			if (pSection->Type == EFI_SECTION_COMPRESSED)
+			{
+				*IndexOut = i;
+				*FileIndex = c;
+				return 1;
+			}
+
+			/*if (pFirstFile->Type == EFI_FV_FILETYPE_DXE_CORE)
+			{	// candidate .. may be uncompressed!
+				
+				*IndexOut = i;
+				*FileIndex = -1;
+				return TRUE;
+			}
+			else*/ if (pFirstFile->Type == EFI_FV_FILETYPE_FIRMWARE_VOLUME_IMAGE)
+			{	// EFI_FV_FILETYPE_DXE_CORE
+				// section
+				*IndexOut = i;
+				*FileIndex = c;
+				return 1;
+			}
+			else if (pFirstFile->Type == EFI_FV_FILETYPE_DRIVER)
+			{
+				*IndexOut = i;
+				*FileIndex = (UINT16) 0xffff;
+				return 1;
+			}
+		}
+	}
+
+ERROR:	// no dxe found
+	*IndexOut = 0;
+	*FileIndex = 0;
+	return 0;
+}
+
+////////////////////////////////////////////////////////////////////////
+// Python stubs
+
+STATIC
+PyObject*
+Py_FvVolumeCount(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SrcData;
+  UINT32        SrcDataSize;
+  UINT32        DstDataSize;
+  EFI_STATUS    Status;
+  UINT8         *SrcBuf;
+
+  // Pick the compress function based on compression type
+  COMPRESS_FUNCTION CompressFunction;
+
+  DstDataSize = 0;
+
+  Status = PyArg_ParseTuple(Args, "Oi", &SrcData, &SrcDataSize);
+  if (Status == 0) {
+    printf("PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if (SrcData->ob_type->tp_as_buffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SrcBuf = PyMem_Malloc(SrcDataSize);
+  if (SrcBuf == NULL) {
+    //printf("Not enough memory\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SrcData, SrcBuf, SrcDataSize);
+  if (Status != EFI_SUCCESS) {
+    //printf("Buffer segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  DstDataSize = find_volume(SrcBuf, SrcDataSize);
+  PyMem_Free(SrcBuf);
+  
+  return PyLong_FromUnsignedLong((unsigned long)DstDataSize);
+
+ERROR:
+  if (SrcBuf != NULL) {
+    free(SrcBuf);
+  }
+
+  return PyLong_FromUnsignedLong((unsigned long) 0);
+
+}
+
+///////////////////////////////////////////////////////////////////////////
+//
+STATIC
+PyObject*
+Py_OpenVolume(
+  PyObject      *SrcData,
+  UINT32        SrcDataSize,
+  UINT32		VolumeIndex
+  )
+{
+  UINT32        DstDataSize;
+  EFI_STATUS    Status;
+  UINT8         *SrcBuf;
+  UINT8			*VolumePtr;
+  UINT32		VolumeSize;
+
+
+  DstDataSize = 0;
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SrcBuf = PyMem_Malloc(SrcDataSize);
+  if (SrcBuf == NULL) {
+   // printf("Not enough memory\n");
+    //PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SrcData, SrcBuf, SrcDataSize);
+  if (Status != EFI_SUCCESS) {
+    printf("Buffer segment is not available, or incorrect length\n");
+    //PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  VolumePtr =  ptr_to_volume(SrcBuf, SrcDataSize, VolumeIndex);
+  VolumeSize = volume_size(SrcBuf, SrcDataSize, VolumeIndex);
+
+  if (VolumePtr == NULL || VolumeSize == 0)
+  {
+	  //printf("Volume not found!");
+	  goto ERROR;
+  }
+
+  if (IsFileVolume(VolumePtr, SrcDataSize) == 0)
+  {		// unknown volume!
+	 // printf("Unknown Volume File System");
+	  goto ERROR;
+  }
+
+  DstDataSize = find_volume(SrcBuf, SrcDataSize);
+
+  return PyLong_FromUnsignedLong((unsigned long)DstDataSize);
+
+ERROR:
+  if (SrcBuf != NULL) {
+    free(SrcBuf);
+  }
+
+  return PyLong_FromUnsignedLong((unsigned long) 0);
+
+}
+
+/////////////////////////////////////////////////////////////////////
+//
+STATIC
+PyObject*
+Py_FvVolumeImageCompressed(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SrcData;
+  UINT32        SrcDataSize;
+  UINT32        VolumeIndex;
+  EFI_STATUS    Status;
+  UINT8         *SrcBuf;
+  UINT32        Result;
+  
+  // Pick the compress function based on compression type
+
+  Status = PyArg_ParseTuple(Args, "Oii", &SrcData, &SrcDataSize, &VolumeIndex);
+  if (Status == 0) {
+    printf("PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if (SrcData->ob_type->tp_as_buffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SrcBuf = PyMem_Malloc(SrcDataSize);
+  if (SrcBuf == NULL) {
+    //printf("Not enough memory\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SrcData, SrcBuf, SrcDataSize);
+  if (Status != EFI_SUCCESS) {
+    //printf("Buffer segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  Result = VolumeImageCompressed(SrcBuf, SrcDataSize);
+  
+   return PyLong_FromUnsignedLong((unsigned long)Result);
+
+ERROR:
+  if (SrcBuf != NULL) {
+    free(SrcBuf);
+  }
+
+  return PyLong_FromUnsignedLong((unsigned long) 0);
+}
+
+STATIC
+PyObject*
+Py_FvVolumeSize(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SrcData;
+  UINT32        SrcDataSize;
+  UINT32        VolumeIndex;
+  EFI_STATUS    Status;
+  UINT8         *SrcBuf;
+  UINT32        Result;
+  
+  // Pick the compress function based on compression type
+
+  Status = PyArg_ParseTuple(Args, "Oii", &SrcData, &SrcDataSize, &VolumeIndex);
+  if (Status == 0) {
+    printf("PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if (SrcData->ob_type->tp_as_buffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SrcBuf = PyMem_Malloc(SrcDataSize);
+  if (SrcBuf == NULL) {
+   // printf("Not enough memory\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SrcData, SrcBuf, SrcDataSize);
+  if (Status != EFI_SUCCESS) {
+   // printf("Buffer segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  Result = volume_size(SrcBuf, SrcDataSize, VolumeIndex);
+  
+   return PyLong_FromUnsignedLong((unsigned long)Result);
+
+ERROR:
+  if (SrcBuf != NULL) {
+    free(SrcBuf);
+  }
+
+  return PyLong_FromUnsignedLong((unsigned long) 0);
+}
+
+
+STATIC
+PyObject*
+Py_FvVolumeAddress(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SpiDataObject;
+  UINT32        SpiDataSize;
+  UINT32        VolumeIndex;
+  EFI_STATUS    Status;
+  UINT8         *SpiBuffer, *VolumePtr;
+  UINT32        Result;
+  
+  // Pick the compress function based on compression type
+
+  Status = PyArg_ParseTuple(Args, "Oii", &SpiDataObject, &SpiDataSize, &VolumeIndex);
+  if (Status == 0) {
+    printf("PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if (SpiDataObject->ob_type->tp_as_buffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SpiBuffer = PyMem_Malloc(SpiDataSize);
+  if (SpiBuffer == NULL) {
+   // printf("[FvVolumeAddress] cannot alloc flat buffer for SPI\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SpiDataObject, SpiBuffer, SpiDataSize);
+  if (Status != EFI_SUCCESS) {
+    //printf("Buffer segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  VolumePtr = ptr_to_volume(SpiBuffer, SpiDataSize, VolumeIndex);
+  
+  if (VolumePtr != NULL)
+  {
+    Result = (UINT32) (VolumePtr - SpiBuffer);
+  }
+  else
+  {
+    Result = 0xffffffff;
+  }
+  
+  PyMem_Free(SpiBuffer);
+  
+  return PyLong_FromUnsignedLong((unsigned long)Result);
+
+ERROR:
+  if (SpiBuffer != NULL) {
+    PyMem_Free(SpiBuffer);
+  }
+
+  return PyLong_FromUnsignedLong((unsigned long) -1);
+}
+
+STATIC
+PyObject*
+Py_LookupDxeImage(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SpiDataObject;
+  UINT32        SpiDataSize;
+  EFI_STATUS    Status;
+  UINT8         *SpiBuffer, *VolumePtr;
+  UINT32        Result;
+  UINT16		FileIndex;
+  UINT8			VolumeIndex;
+  UINT32		Mask24;
+  UINT16		Mask16;
+  
+  // Pick the compress function based on compression type
+
+  Status = PyArg_ParseTuple(Args, "Oi", &SpiDataObject, &SpiDataSize);
+  if (Status == 0) {
+    printf("PyArg_ParseTuple failed!\n");
+    goto ERROR;
+  }
+
+  if (SpiDataObject->ob_type->tp_as_buffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    goto ERROR;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SpiBuffer = PyMem_Malloc(SpiDataSize);
+  if (SpiBuffer == NULL) {
+   // printf("[FvVolumeAddress] cannot alloc flat buffer for SPI\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SpiDataObject, SpiBuffer, SpiDataSize);
+  if (Status != EFI_SUCCESS) {
+    //printf("Buffer segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  if (LookupDxeImage(SpiBuffer, SpiDataSize, &VolumeIndex, &FileIndex))
+  {
+    printf("LookupDxeImage return %x %x\n", VolumeIndex, FileIndex);
+    Mask24 = (UINT32) VolumeIndex << 16;
+	Mask16 = (UINT32) FileIndex;
+    Result = Mask24 | Mask16;
+	printf("Result return %x\n", Result);
+  }
+  else
+  {
+    printf("LookupDxeImage fail\n");
+    Result = 0xff000000;
+  }
+  
+  PyMem_Free(SpiBuffer);
+  
+  return PyLong_FromUnsignedLong((unsigned long)Result);
+
+ERROR:
+  if (SpiBuffer != NULL) {
+    PyMem_Free(SpiBuffer);
+  }
+  printf("LookupDxeImage: ERROR\n");
+  return PyLong_FromUnsignedLong((unsigned long) -1);
+}
+
+
+STATIC
+PyObject*
+Py_FvIsFileVolume(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SpiDataObject;
+  UINT32        SpiDataSize;
+  UINT32        VolumeIndex;
+  EFI_STATUS    Status;
+  UINT8         *SpiBuffer, *VolumePtr;
+  UINT32        Result;
+  
+  // Pick the compress function based on compression type
+
+  Status = PyArg_ParseTuple(Args, "Oii", &SpiDataObject, &SpiDataSize, &VolumeIndex);
+  if (Status == 0) {
+    //printf("PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if (SpiDataObject->ob_type->tp_as_buffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SpiBuffer = PyMem_Malloc(SpiDataSize);
+  if (SpiBuffer == NULL) {
+   // printf("[FvVolumeAddress] cannot alloc flat buffer for SPI\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SpiDataObject, SpiBuffer, SpiDataSize);
+  if (Status != EFI_SUCCESS) {
+    //printf("Buffer segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  VolumePtr = ptr_to_volume(SpiBuffer, SpiDataSize, VolumeIndex);
+  
+  if (VolumePtr != NULL)
+  {
+    Result = (UINT32) (VolumePtr - SpiBuffer);
+  }
+  else
+  {
+    Result = 0xffffffff;
+  }
+  
+  PyMem_Free(SpiBuffer);
+  
+  return PyLong_FromUnsignedLong((unsigned long)Result);
+
+ERROR:
+  if (SpiBuffer != NULL) {
+    PyMem_Free(SpiBuffer);
+  }
+
+  return PyLong_FromUnsignedLong((unsigned long) -1);
+}
+
+STATIC
+ PyObject*
+ Py_VolumeFromHandle(
+   PyObject    *Self,
+   PyObject    *Args
+ )
+{
+  UINT32        VolumeHandle;
+  EFI_STATUS    Status;
+  UINT32        Result;
+  UINT8			VolumeIndex;
+  UINT16		FileIndex;
+  
+  // Pick the compress function based on compression type
+  Result = 0xffffffff;
+  Status = PyArg_ParseTuple(Args, "i", &VolumeHandle);
+  
+  if (Status == 0) {
+    printf("[VolumeFromHandle] PyArg_ParseTuple failed!\n");
+    goto ERROR;
+  }
+
+  if ((VolumeHandle & 0xff000000) != 0)
+  {
+    //printf("Error to access to volume handle");
+	PyErr_SetString(PyExc_Exception, "handle not valid!\n");
+    goto ERROR;
+  }
+  
+  VolumeIndex = (UINT8) (VolumeHandle >> 16);
+  FileIndex = (UINT16) (VolumeHandle & 0xffff);
+  
+   return PyLong_FromUnsignedLong((unsigned long) VolumeIndex);
+
+ERROR:
+  return PyLong_FromUnsignedLong((unsigned long) -1);
+
+}
+
+STATIC
+PyObject*
+Py_FvOpenVolume(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SpiObject;
+  UINT32        SpiLength, NewBufferLength, VolumeHandle;
+  EFI_STATUS    Status;
+  UINT8         *SpiBuffer, *NewBuffer;
+  UINT32        Result;
+  UINT8			VolumeIndex;
+  UINT16		FileIndex;
+  
+  // Pick the compress function based on compression type
+  Result = 0xffffffff;
+  Status = PyArg_ParseTuple(Args, "Oii", &SpiObject, &SpiLength, &VolumeHandle);
+  
+  if (Status == 0) {
+    //printf("[FvOpenVolume] PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if ((VolumeHandle & 0xff000000) != 0)
+  {
+    printf("Error to access to volume handle");
+	PyErr_SetString(PyExc_Exception, "OpenVolume handle not valid!\n");
+    goto ERROR;
+  }
+  
+  VolumeIndex = (UINT8) (VolumeHandle >> 16);
+  FileIndex = (UINT16) (VolumeHandle & 0xffff);
+  
+  if (SpiObject->ob_type->tp_as_buffer == NULL
+      || SpiObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SpiObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("SpiObject is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    goto ERROR;
+  }
+  
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SpiBuffer = PyMem_Malloc(SpiLength);
+  
+  if (SpiBuffer == NULL) {
+   // printf("[FvOpenVolume] cannot alloc flat buffer for volume\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SpiObject, SpiBuffer, SpiLength);
+  if (Status != EFI_SUCCESS) {
+   // printf("VolumeObject segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  NewBuffer = OpenVolume(SpiBuffer, SpiLength, VolumeIndex, FileIndex, &NewBufferLength);
+
+  PyMem_Free(SpiBuffer);	// free buffer
+  
+  return PyBuffer_FromMemory(NewBuffer, (Py_ssize_t) NewBufferLength);
+
+ERROR:
+  if (SpiBuffer != NULL)
+	PyMem_Free(SpiBuffer);
+
+  return NULL;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// FvVolumeAddFile(volume, volumelength, newfile, newfilelength)
+// 	volume : PyObject -> string buffer
+//	volume length : length
+//	newfile : PyObject -> string buffer
+//	newfilelength: length
+STATIC
+PyObject*
+Py_FvVolumeAddFile(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *VolumeObject, *NewFileObject;
+  UINT32        VolumeLength, NewFileLength;
+  EFI_STATUS    Status;
+  UINT8         *VolumeBuffer, *NewFileBuffer;
+  UINT32        Result;
+  
+  // Pick the compress function based on compression type
+  Result = 0xffffffff;
+  Status = PyArg_ParseTuple(Args, "OiOi", &VolumeObject, &VolumeLength, &NewFileObject, &NewFileLength);
+  if (Status == 0) {
+    //printf("[FvVolumeAddFile] PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if (VolumeObject->ob_type->tp_as_buffer == NULL
+      || VolumeObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || VolumeObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("VolumeObject is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    goto ERROR;
+  }
+
+  if (NewFileObject->ob_type->tp_as_buffer == NULL
+      || NewFileObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || NewFileObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("NewFileObject is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+  
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  VolumeBuffer = PyMem_Malloc(VolumeLength);
+  NewFileBuffer = PyMem_Malloc(NewFileLength);
+  
+  if (VolumeBuffer == NULL || NewFileBuffer == NULL) {
+    //printf("[FvVolumeAddFile] cannot alloc flat buffer for volume or newfile\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(VolumeObject, VolumeBuffer, VolumeLength);
+  if (Status != EFI_SUCCESS) {
+   // printf("VolumeObject segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(NewFileObject, NewFileBuffer, NewFileLength);
+  if (Status != EFI_SUCCESS) {
+    printf("VolumeObject segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  if (PushFileInVolume(VolumeBuffer, VolumeLength, NewFileBuffer, NewFileLength) == 1)
+  {
+	Result = 0;
+  }
+  else
+  {
+    Result = 0xffffffff;
+  }
+  
+  CopyObject(VolumeObject, VolumeBuffer, VolumeLength);
+  
+  PyMem_Free(VolumeBuffer);	// free buffer
+  PyMem_Free(NewFileBuffer); // 
+  
+  return PyLong_FromUnsignedLong((unsigned long)Result);
+
+ERROR:
+  if (VolumeBuffer != NULL)
+	PyMem_Free(VolumeBuffer);
+  if (NewFileBuffer != NULL)
+	PyMem_Free(NewFileBuffer);
+
+  return PyLong_FromUnsignedLong((unsigned long)Result);
+}
+
+STATIC
+PyObject*
+Py_FvCloseVolume(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *VolumeObject, *DxeObject;
+  UINT32        VolumeLength, DxeLength, VolumeHandle, NewBufferLength;
+  EFI_STATUS    Status;
+  UINT8         *VolumeBuffer, *DxeFileBuffer, *NewBuffer;
+  UINT32        Result;
+  UINT8			VolumeIndex;
+  UINT16		FileIndex;
+  
+  // Pick the compress function based on compression type
+  Result = 0xffffffff;
+  Status = PyArg_ParseTuple(Args, "OiOii", &VolumeObject, &VolumeLength, &DxeObject, &DxeLength, &VolumeHandle);
+  if (Status == 0) {
+    //printf("[FvCloseVolume] PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if ((VolumeHandle & 0xff000000) != 0)
+  {
+    printf("Error to access to volume handle");
+	PyErr_SetString(PyExc_Exception, "OpenVolume handle not valid!\n");
+    goto ERROR;
+  }
+  
+  VolumeIndex = (UINT8) (VolumeHandle >> 16);
+  FileIndex = (UINT16) (VolumeHandle & 0xffff);
+  
+  if (VolumeObject->ob_type->tp_as_buffer == NULL
+      || VolumeObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || VolumeObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("VolumeObject is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    goto ERROR;
+  }
+
+  if (DxeObject->ob_type->tp_as_buffer == NULL
+      || DxeObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || DxeObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	//printf("DxeObject is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+  
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  VolumeBuffer = PyMem_Malloc(VolumeLength);
+  DxeFileBuffer = PyMem_Malloc(DxeLength);
+  
+  if (VolumeBuffer == NULL || DxeFileBuffer == NULL) {
+    //printf("[FvVolumeAddFile] cannot alloc flat buffer for volume or newfile\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(VolumeObject, VolumeBuffer, VolumeLength);
+  if (Status != EFI_SUCCESS) {
+    //printf("VolumeObject segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(DxeObject, DxeFileBuffer, DxeLength);
+  if (Status != EFI_SUCCESS) {
+    //printf("VolumeObject segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+   printf("[FvCloseVolume](%x, %x, %x, %x, %x, NewBufferLength)\n", VolumeBuffer, VolumeLength, DxeFileBuffer, DxeLength, VolumeIndex);
+	
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  // CloseVolume -> VolumeIndex must be 0
+  NewBuffer = CloseVolume(VolumeBuffer, VolumeLength, DxeFileBuffer, DxeLength, 0, FileIndex, &NewBufferLength);
+  //printf("[FvCloseVolume]CloseVolume %x %x\n", NewBuffer, NewBufferLength);
+  
+  PyMem_Free(VolumeBuffer);	// free buffer
+  PyMem_Free(DxeFileBuffer); // 
+  
+  return PyBuffer_FromMemory(NewBuffer, (Py_ssize_t) NewBufferLength);
+
+ERROR:
+  if (VolumeBuffer != NULL)
+	PyMem_Free(VolumeBuffer);
+  if (DxeFileBuffer != NULL)
+	PyMem_Free(DxeFileBuffer);
+
+  printf("[FvCloseVolume] error!\n");
+  return NULL;
+}
+
+STATIC
+PyObject*
+Py_FvVolumeGet(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SpiDataObject;
+  UINT32        SpiDataSize;
+  UINT32        VolumeIndex, VolumeSize;
+  EFI_STATUS    Status;
+  UINT8         *SpiBuffer, *VolumePtr, *DstPtr;
+  UINT32        Result;
+  
+  // Pick the compress function based on compression type
+
+  Status = PyArg_ParseTuple(Args, "Oii", &SpiDataObject, &SpiDataSize, &VolumeIndex);
+  if (Status == 0) {
+    printf("PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+ // printf("\nFvVolumeGet(%x, %x, %x)", SpiDataObject, SpiDataSize, VolumeIndex);
+  
+  
+  if (SpiDataObject->ob_type->tp_as_buffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SpiDataObject->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  SpiBuffer = PyMem_Malloc(SpiDataSize);
+  if (SpiBuffer == NULL) {
+   // printf("[FvVolumeAddress] cannot alloc flat buffer for SPI\n");
+    PyErr_SetString(PyExc_Exception, "Not enough memory\n");
+    goto ERROR;
+  }
+
+  Status = ParseObject(SpiDataObject, SpiBuffer, SpiDataSize);
+  if (Status != EFI_SUCCESS) {
+  //  printf("Buffer segment is not available, or incorrect length\n");
+    PyErr_SetString(PyExc_Exception, "Buffer segment is not available, or incorrect length\n");
+    goto ERROR;
+  }
+
+  //printf("Buffer %x %s", SrcDataSize, SrcBuf);
+  
+  //printf("Scanning buffer...");
+  VolumePtr = ptr_to_volume(SpiBuffer, SpiDataSize, VolumeIndex);
+  VolumeSize = volume_size(SpiBuffer, SpiDataSize, VolumeIndex);
+  
+  if (VolumePtr != NULL)
+  {
+ //   printf("allocation of volume!\n");
+    DstPtr = PyMem_Malloc(VolumeSize);
+	memcpy(DstPtr, VolumePtr, VolumeSize);
+  }
+  else
+  {
+//    printf("ptr_to_volume failed!\n");
+    DstPtr = NULL;
+    Result = 0xffffffff;
+  }
+  
+  PyMem_Free(SpiBuffer);
+  
+  printf("Return object\n");
+  return PyBuffer_FromMemory(DstPtr, (Py_ssize_t) VolumeSize);
+
+ERROR:
+  if (SpiBuffer != NULL) {
+    PyMem_Free(SpiBuffer);
+  }
+
+  return NULL;
+}
+
+STATIC
+PyObject*
+Py_MemSet(
+  PyObject    *Self,
+  PyObject    *Args
+  )
+{
+  PyObject      *SrcData;
+  UINT32        SrcDataSize;
+  UINT32        pattern;
+  EFI_STATUS    Status;
+  UINT32        Result;
+  
+  // Pick the compress function based on compression type
+
+  Status = PyArg_ParseTuple(Args, "Oii", &SrcData, &SrcDataSize, &pattern);
+  if (Status == 0) {
+    printf("PyArg_ParseTuple failed!\n");
+    return NULL;
+  }
+
+  if (SrcData->ob_type->tp_as_buffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getreadbuffer == NULL
+      || SrcData->ob_type->tp_as_buffer->bf_getsegcount == NULL) {
+	printf("First argument is not a buffer\n");
+    PyErr_SetString(PyExc_Exception, "First argument is not a buffer\n");
+    return NULL;
+  }
+
+  // Because some Python objects which support "buffer" protocol have more than one
+  // memory segment, we have to copy them into a contiguous memory.
+  Status = SetObject(SrcData, SrcDataSize, pattern);
+
+   return PyLong_FromUnsignedLong((unsigned long)SrcDataSize);
+}
+
+  
+#define EFI_DECOMPRESS_DOCS   "EfiDecompress(): Decompress data using the EDKII standard algorithm.\n"
+#define TIANO_DECOMPRESS_DOCS "TianoDecompress(): Decompress data using 5-bit Huffman encoding.\n"
+#define LZMA_DECOMPRESS_DOCS  "LzmaDecompress(): Decompress using 7-z LZMA alogrithm.\n"
+#define EFI_COMPRESS_DOCS     "EfiCompress(): Compress data using the EDKII standard algorithm.\n"
+#define TIANO_COMPRESS_DOCS   "TianoCompress(): Compress data using 5-bit Huffman encoding.\n"
+#define LZMA_COMPRESS_DOCS    "LzmaCompress(): Compress using 7-z LZMA alogrithm.\n"
+
+#define FV_VOLUME_COUNT_DOCS  "FvVolumeCount(buffer, len): Return numbers of volumes in block.\n"
+#define FV_VOLUME_IMAGE_COMPRESSED_DOC "FvVolumeImageCompressed(buffer, len): Return true or false if volume is compressed.\n"
+#define FV_VOLUME_SIZE_DOCS "FvVolumeSize(spimem, spilen, volindex): Return size of volume.\n"
+#define FV_VOLUME_ADDRESS_DOCS "FvVolumeAddress(spimem, spilen, volindex): Return base address of volume.\n"
+#define FV_VOLUME_GET_DOCS "FvVolumeGet(spimem, spilen, volindex): Buffer.\n"
+#define FV_VOLUME_IS_FILE_DOCS "FvIsFileVolume(buffer, len): Is a valid container?\n"
+#define FV_OPEN_VOLUME_DOCS "FvOpenVolume(spimem, spilen, volhandle): Return a new buffer with unpacked volume.\n"
+#define FV_VOLUME_ADD_FILE_DOCS "FvVolumeAddFile(volume, volumelength, newfile, newfilelength): Push file in volume.\n"
+#define FV_VOLUME_CLOSE_DOCS "FvCloseVolume(originalvol, originalvolsize, volume, volumelength, volhandle): Return the new volume.\n"
+#define DXE_VOLUME_LOOKUP_DOCS "LookupVolumeDocs(spimem, spilen) : Return an handle to describe volumeindex"
+#define VOLUMEFROMHANDLE_DOCS "VolumeFromHandle(handle): Return index of volume"
+#define MEMSET_DOCS	"MemSet(buffer, len, value): memset()"
+
+/*
+static char efi_rdtsc__doc__[] =
+"rdtsc() -> (edx:eax)\n\
+Read the TSC counter from the CPU.";
+
+static PyObject *
+efi_rdtsc(PyObject *self, PyObject *args)
+{
+	unsigned int veax, vedx;
+
+	_asm {
+		rdtsc
+		mov vedx, edx
+		mov veax, eax
+	}
+	
+	return Py_BuildValue("(kk)",
+	    (unsigned long)vedx,
+	    (unsigned long)veax);
+}
+
+static char efi_cpuid__doc__[] =
+"cpuid(eax) -> (eax:ebx:ecx:edx)\n\
+Read the CPUID.";
+
+static PyObject *
+efi_cpuid(PyObject *self, PyObject *args)
+{
+	unsigned int veax, vebx, vecx, vedx;
+
+	if (!PyArg_Parse(args, "I", &veax))
+		return NULL;
+	
+	_asm {
+		mov eax, veax
+		cpuid
+		mov veax, eax
+		mov vebx, ebx
+		mov vecx, ecx
+		mov vedx, edx
+	}	
+
+	return Py_BuildValue("(kkkk)",
+	    (unsigned long)veax,(unsigned long)vebx,(unsigned long)vecx,(unsigned long)vedx);
+}
+*/
+
+#endif // CHIPSEC
+
+
 static PyMethodDef posix_methods[] = {
     {"access",          posix_access,     METH_VARARGS, posix_access__doc__},
 #ifdef HAVE_TTYNAME
@@ -7113,6 +9759,39 @@ static PyMethodDef posix_methods[] = {
 #endif
 #ifdef HAVE_GETRESGID
     {"getresgid",       posix_getresgid, METH_NOARGS, posix_getresgid__doc__},
+#endif
+
+#ifdef CHIPSEC
+  {"rdmsr",             posix_rdmsr, 0, efi_rdmsr__doc__},
+  {"wrmsr",             posix_wrmsr, 0, efi_wrmsr__doc__},
+  {"readpci",           posix_readpci, 0, efi_readpci__doc__},
+  {"writepci",          posix_writepci, 0, efi_writepci__doc__},
+  {"readmem",           posix_readmem, 0, efi_readmem__doc__},
+  {"readmem_dword",     posix_readmem_dword, 0, efi_readmem_dword__doc__},
+  {"writemem",          posix_writemem, 0, efi_writemem__doc__},
+  {"writemem_dword",    posix_writemem_dword, 0, efi_writemem_dword__doc__},
+  {"writeio",           posix_writeio, 0, efi_writeio__doc__},
+  {"readio",            posix_readio, 0, efi_readio__doc__},
+  {"EfiDecompress",   (PyCFunction)Py_EfiDecompress,   METH_VARARGS, EFI_DECOMPRESS_DOCS},
+  {"TianoDecompress", (PyCFunction)Py_TianoDecompress, METH_VARARGS, TIANO_DECOMPRESS_DOCS},
+  {"LzmaDecompress",  (PyCFunction)Py_LzmaDecompress,  METH_VARARGS, LZMA_DECOMPRESS_DOCS},
+  {"EfiCompress",     (PyCFunction)Py_EfiCompress,     METH_VARARGS, EFI_COMPRESS_DOCS},
+  {"TianoCompress",   (PyCFunction)Py_TianoCompress,   METH_VARARGS, TIANO_COMPRESS_DOCS},
+  {"LzmaCompress",    (PyCFunction)Py_LzmaCompress,    METH_VARARGS, LZMA_COMPRESS_DOCS},
+  {"FvVolumeCount",   (PyCFunction) Py_FvVolumeCount,  METH_VARARGS, FV_VOLUME_COUNT_DOCS},
+  {"FvVolumeImageCompressed", (PyCFunction) Py_FvVolumeImageCompressed, METH_VARARGS, FV_VOLUME_IMAGE_COMPRESSED_DOC },
+  {"FvVolumeSize",    (PyCFunction) Py_FvVolumeSize,   METH_VARARGS, FV_VOLUME_SIZE_DOCS},
+  {"FvVolumeAddress", (PyCFunction) Py_FvVolumeAddress,   METH_VARARGS, FV_VOLUME_ADDRESS_DOCS},
+  {"FvIsFileVolume",  (PyCFunction) Py_FvIsFileVolume, METH_VARARGS, FV_VOLUME_IS_FILE_DOCS},
+  {"FvOpenVolume",    (PyCFunction) Py_FvOpenVolume,   METH_VARARGS, FV_OPEN_VOLUME_DOCS},
+  {"FvVolumeAddFile", (PyCFunction) Py_FvVolumeAddFile,METH_VARARGS, FV_VOLUME_ADD_FILE_DOCS},
+  {"FvCloseVolume",   (PyCFunction) Py_FvCloseVolume,  METH_VARARGS, FV_VOLUME_CLOSE_DOCS},
+  {"FvVolumeGet",     (PyCFunction) Py_FvVolumeGet, METH_VARARGS, FV_VOLUME_GET_DOCS},
+  {"LookupDxeImage",  (PyCFunction) Py_LookupDxeImage, METH_VARARGS, DXE_VOLUME_LOOKUP_DOCS},
+  {"VolumeFromHandle", (PyCFunction) Py_VolumeFromHandle, METH_VARARGS, VOLUMEFROMHANDLE_DOCS},
+  {"MemSet",          (PyCFunction) Py_MemSet, METH_VARARGS, MEMSET_DOCS},
+//  {"rdtsc",             posix_rdtsc, 0, efi_rdtsc__doc__},
+//  {"cpuid",             posix_cpuid, 0, efi_cpuid__doc__},
 #endif
 
     {NULL,              NULL}            /* Sentinel */

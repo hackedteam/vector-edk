@@ -1,0 +1,93 @@
+## @file
+#  CHIPSEC
+#
+#  Porting of CHIPSEC project as UEFI native application
+#  (c) 2014-1025, ]HackingTeam[
+#  http://www.hackingteam.com
+#  cod
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = chipsec
+  FILE_GUID                      = C2AA29A2-065C-4FC5-BE01-7FAA761EAA7E
+  MODULE_TYPE                    = UEFI_APPLICATION
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = ShellCEntryLib
+
+#
+# The following information is for reference only and not required by the build tools.
+#
+#  VALID_ARCHITECTURES           = IA32 X64 IPF EBC
+#
+
+[Sources]
+  # conio
+  conio.c
+  
+  # callback
+  callback.c
+  
+  # errno.c
+  cpu.c
+  chipset.c
+  cmos.c
+  config.c
+  fv.c
+  helper.c
+  main.c
+  pci.c
+  settings.c
+  spi.c
+  mmio.c
+  UefiMain.c
+    
+  # Tiano Packages
+  Tiano/Decompress.c
+  Tiano/EfiCompress.c
+  Tiano/TianoCompress.c
+  
+  #LZMA packages
+  LZMA/LzmaCompress.c
+  LZMA/LzmaDecompress.c
+  LZMA/SDK/C/Bra86.c
+  LZMA/SDK/C/LzFind.c
+  LZMA/SDK/C/LzmaDec.c
+  LZMA/SDK/C/LzmaEnc.c
+  
+[Sources.Ia32]
+  i386/cpu.asm
+
+[Sources.X64]
+  amd64/cpu.asm
+  
+[Packages]
+  StdLib/StdLib.dec
+  MdePkg/MdePkg.dec
+  ShellPkg/ShellPkg.dec
+  
+[LibraryClasses]
+  UefiLib
+  DebugLib
+  LibC
+  LibString
+  LibStdio
+  # LibGdtoa
+  # LibMath
+  LibWchar
+  LibGen
+  # LibNetUtil
+  DevShell
+
+[Protocols]
+ #gEfiSimpleFileSystemProtocolGuid
+ #gEfiLoadedImageProtocolGuid
+
+
+[Guids]
+  #gEfiFileInfoGuid
+  
+  
+[BuildOptions]
+  MSFT:*_*_IA32_CC_FLAGS         =  /wd4018 /wd4054 /wd4055 /wd4101 /wd4131 /wd4152 /wd4204 /wd4210 /wd4244 /wd4267 /wd4305 /wd4310 /wd4389 /wd4701 /wd4702 /wd4706
+  MSFT:*_*_X64_CC_FLAGS          =  /wd4018 /wd4054 /wd4055 /wd4101 /wd4131 /wd4152 /wd4204 /wd4210 /wd4244 /wd4267 /wd4305 /wd4310 /wd4389 /wd4701 /wd4702 /wd4706 

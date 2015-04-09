@@ -113,9 +113,11 @@
   AppPkg/Applications/Enquire/Enquire.inf    #
 
 #### After extracting the Python distribution, un-comment the following line to build Python.
-#  AppPkg/Applications/Python/PythonCore.inf
+#   AppPkg/Applications/Python/PythonCore.inf
 
-
+## chipsec
+  AppPkg/Applications/chipsec/chipsec.inf
+  
 ##############################################################################
 #
 # Specify whether we are running in an emulation environment, or not.

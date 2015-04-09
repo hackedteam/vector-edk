@@ -24,18 +24,39 @@
 
 [Packages]
   MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  IntelFrameworkPkg/IntelFrameworkPkg.dec
+  IntelFrameworkModulePkg/IntelFrameworkModulePkg.dec
   ShellPkg/ShellPkg.dec
-
 
 [LibraryClasses]
   UefiApplicationEntryPoint
+  UefiRuntimeServicesTableLib
+  UefiBootServicesTableLib
+  MemoryAllocationLib
+  BaseMemoryLib
+  BaseLib
   UefiLib
+  DebugLib
+  PcdLib
+
 
 
  [Protocols]
- gEfiSimpleFileSystemProtocolGuid
- gEfiLoadedImageProtocolGuid
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiLoadedImageProtocolGuid
+  gEfiDiskIoProtocolGuid
+  gEfiBlockIoProtocolGuid  
+  gEfiUnicodeCollationProtocolGuid
+  gEfiUnicodeCollation2ProtocolGuid
+  gEfiSimpleFileSystemProtocolGuid
+  gEfiFirmwareVolume2ProtocolGuid
 
+[Pcd]
+  gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultLang
+  gEfiMdePkgTokenSpaceGuid.PcdUefiVariableDefaultPlatformLang
 
  [Guids]
   gEfiFileInfoGuid
+  gEfiFileSystemInfoGuid
+  gEfiFileSystemVolumeLabelInfoIdGuid
